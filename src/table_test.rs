@@ -231,10 +231,51 @@ const FORMAT_BOUNDARIES: [(char, &str); 32] = [
     ('\u{e007f}', "\\u{e007f}"),
 ];
 
-/// Printable characters right next to a format-character range, which
-/// must render unchanged.
-const FORMAT_NEIGHBOURS: [char; 7] = [
-    '\u{ac}', '\u{ae}', '\u{606}', '\u{200a}', '\u{2010}', '\u{2070}', '\u{fffc}',
+/// The code points just below the start and just above the end of each
+/// format-character range (outside every range and not control
+/// characters), which must render unchanged.
+const FORMAT_NEIGHBOURS: [char; 41] = [
+    '\u{ac}',
+    '\u{ae}',
+    '\u{5ff}',
+    '\u{606}',
+    '\u{61b}',
+    '\u{61d}',
+    '\u{6dc}',
+    '\u{6de}',
+    '\u{70e}',
+    '\u{710}',
+    '\u{88f}',
+    '\u{892}',
+    '\u{8e1}',
+    '\u{8e3}',
+    '\u{180d}',
+    '\u{180f}',
+    '\u{200a}',
+    '\u{2010}',
+    '\u{2029}',
+    '\u{202f}',
+    '\u{205f}',
+    '\u{2065}',
+    '\u{2070}',
+    '\u{fefe}',
+    '\u{ff00}',
+    '\u{fff8}',
+    '\u{fffc}',
+    '\u{110bc}',
+    '\u{110be}',
+    '\u{110cc}',
+    '\u{110ce}',
+    '\u{1342f}',
+    '\u{13440}',
+    '\u{1bc9f}',
+    '\u{1bca4}',
+    '\u{1d172}',
+    '\u{1d17b}',
+    '\u{e0000}',
+    '\u{e0002}',
+    '\u{e001f}',
+    '\u{e0080}',
 ];
 
 /// The lease row with `interface` as the last (unpadded) column.
