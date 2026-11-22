@@ -12,8 +12,12 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// List the current DHCP leases.
-    List,
+    /// List the current DHCP leases, ordered by IP address.
+    List {
+        /// Show start and end times in UTC instead of local time.
+        #[arg(long)]
+        utc: bool,
+    },
 }
 
 #[cfg(test)]

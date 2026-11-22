@@ -8,6 +8,7 @@ pub mod lease;
 pub mod mac;
 pub mod source;
 pub mod state;
+pub mod table;
 
 pub use lease::Lease;
 pub use mac::{MacAddr, ParseMacError};
