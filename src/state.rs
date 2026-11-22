@@ -24,8 +24,9 @@
 //! Kea's `expired-reclaimed` stays apart from ISC's `expired`: Kea has
 //! already freed the address, ISC has not. Kea's `declined` stays apart from
 //! ISC's `abandoned` although both mean a client reported an address
-//! conflict, because their recovery differs. Names match case-insensitively;
-//! an unknown name is kept verbatim in [`LeaseState::Other`] rather than
+//! conflict, because their recovery differs. Surrounding whitespace is
+//! trimmed and names match case-insensitively; an unknown name is kept in
+//! [`LeaseState::Other`], trimmed but in its original case, rather than
 //! guessed into a known state.
 
 use std::fmt;
@@ -79,7 +80,8 @@ const KNOWN: [LeaseState; 11] = [
 /// Kea's name for an assigned lease, parsed as [`LeaseState::Active`].
 const KEA_DEFAULT: &str = "default";
 
-/// A state name that is not one of the known ones, as it was read.
+/// A state name that is not one of the known ones, as it was read minus
+/// surrounding whitespace.
 ///
 /// Only [`LeaseState::from_str`] builds one, so a known name can never hide
 /// in [`LeaseState::Other`].
@@ -87,7 +89,7 @@ const KEA_DEFAULT: &str = "default";
 pub struct UnknownState(String);
 
 impl UnknownState {
-    /// The name as it was read.
+    /// The name as it was read, trimmed, in its original case.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -104,7 +106,7 @@ pub enum ParseStateError {
 
 impl LeaseState {
     /// The name [`fmt::Display`] prints: the canonical name of a known state,
-    /// the name as read for [`LeaseState::Other`].
+    /// the trimmed name as read for [`LeaseState::Other`].
     #[must_use]
     pub fn as_str(&self) -> &str {
         match self {

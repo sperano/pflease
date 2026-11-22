@@ -62,7 +62,7 @@ fn matches_case_insensitively_and_trims() {
 }
 
 #[test]
-fn keeps_unknown_names_verbatim() {
+fn keeps_unknown_names_trimmed_in_original_case() {
     let state = parse(" Registered ").expect("unknown names parse");
     let LeaseState::Other(unknown) = &state else {
         panic!("expected Other, got {state:?}");
