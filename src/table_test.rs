@@ -193,3 +193,84 @@ fn escapes_bidi_and_format_characters_in_text_columns() {
         "10.0.0.1  02:00:00:00:00:01  evil\\u{202e}txt.exe  2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan\\u{2066}\\u{200b}"
     );
 }
+
+/// First and last code point of every format-character range, with the
+/// escape each must render as.
+const FORMAT_BOUNDARIES: [(char, &str); 32] = [
+    ('\u{ad}', "\\u{ad}"),
+    ('\u{600}', "\\u{600}"),
+    ('\u{605}', "\\u{605}"),
+    ('\u{61c}', "\\u{61c}"),
+    ('\u{6dd}', "\\u{6dd}"),
+    ('\u{70f}', "\\u{70f}"),
+    ('\u{890}', "\\u{890}"),
+    ('\u{891}', "\\u{891}"),
+    ('\u{8e2}', "\\u{8e2}"),
+    ('\u{180e}', "\\u{180e}"),
+    ('\u{200b}', "\\u{200b}"),
+    ('\u{200f}', "\\u{200f}"),
+    ('\u{202a}', "\\u{202a}"),
+    ('\u{202e}', "\\u{202e}"),
+    ('\u{2060}', "\\u{2060}"),
+    ('\u{2064}', "\\u{2064}"),
+    ('\u{2066}', "\\u{2066}"),
+    ('\u{206f}', "\\u{206f}"),
+    ('\u{feff}', "\\u{feff}"),
+    ('\u{fff9}', "\\u{fff9}"),
+    ('\u{fffb}', "\\u{fffb}"),
+    ('\u{110bd}', "\\u{110bd}"),
+    ('\u{110cd}', "\\u{110cd}"),
+    ('\u{13430}', "\\u{13430}"),
+    ('\u{1343f}', "\\u{1343f}"),
+    ('\u{1bca0}', "\\u{1bca0}"),
+    ('\u{1bca3}', "\\u{1bca3}"),
+    ('\u{1d173}', "\\u{1d173}"),
+    ('\u{1d17a}', "\\u{1d17a}"),
+    ('\u{e0001}', "\\u{e0001}"),
+    ('\u{e0020}', "\\u{e0020}"),
+    ('\u{e007f}', "\\u{e007f}"),
+];
+
+/// Printable characters right next to a format-character range, which
+/// must render unchanged.
+const FORMAT_NEIGHBOURS: [char; 7] = [
+    '\u{ac}', '\u{ae}', '\u{606}', '\u{200a}', '\u{2010}', '\u{2070}', '\u{fffc}',
+];
+
+/// The lease row with `interface` as the last (unpadded) column.
+fn row_with_interface(interface: String) -> String {
+    let mut lease = complete(1, "host");
+    lease.interface = Some(interface);
+    render(&[lease], &TimeZone::UTC)
+        .lines()
+        .nth(1)
+        .expect("one lease row")
+        .to_owned()
+}
+
+const ROW_PREFIX: &str =
+    "10.0.0.1  02:00:00:00:00:01  host      2023-11-14 22:13:20  2023-11-14 23:13:20  active  ";
+
+#[test]
+fn escapes_first_and_last_character_of_every_format_range() {
+    for (c, escape) in FORMAT_BOUNDARIES {
+        assert_eq!(
+            row_with_interface(format!("x{c}x")),
+            format!("{ROW_PREFIX}x{escape}x"),
+            "U+{:04X}",
+            u32::from(c)
+        );
+    }
+}
+
+#[test]
+fn keeps_printable_neighbours_of_format_ranges() {
+    for c in FORMAT_NEIGHBOURS {
+        assert_eq!(
+            row_with_interface(format!("x{c}x")),
+            format!("{ROW_PREFIX}x{c}x"),
+            "U+{:04X}",
+            u32::from(c)
+        );
+    }
+}
