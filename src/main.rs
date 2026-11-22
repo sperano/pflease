@@ -20,7 +20,7 @@ enum RunError {
 }
 
 fn main() -> ExitCode {
-    match run(&cli::Cli::parse(), None) {
+    match run(&cli::Cli::parse(), None, &TimeZone::system()) {
         Ok(output) => {
             print!("{output}");
             ExitCode::SUCCESS
@@ -32,16 +32,17 @@ fn main() -> ExitCode {
     }
 }
 
-/// Runs `cli` against `source` and returns what to print.
-fn run(cli: &cli::Cli, source: Option<&dyn LeaseSource>) -> Result<String, RunError> {
+/// Runs `cli` against `source` and returns what to print; times are shown
+/// in `local` unless `--utc` is given.
+fn run(
+    cli: &cli::Cli,
+    source: Option<&dyn LeaseSource>,
+    local: &TimeZone,
+) -> Result<String, RunError> {
     match cli.command {
         cli::Command::List { utc } => {
             let source = source.ok_or(RunError::NoSource)?;
-            let tz = if utc {
-                TimeZone::UTC
-            } else {
-                TimeZone::system()
-            };
+            let tz = if utc { TimeZone::UTC } else { local.clone() };
             Ok(pflease::table::list(source, &tz)?)
         }
     }

@@ -110,11 +110,30 @@ fn list_passes_source_errors_through() {
 
 #[test]
 fn widths_count_characters_not_bytes() {
-    let table = render(&[complete(1, "café"), complete(2, "abcd")], &TimeZone::UTC);
+    // Ten characters, twenty bytes: wider than the header in both.
+    let table = render(
+        &[complete(1, "éééééééééé"), complete(2, "abcd")],
+        &TimeZone::UTC,
+    );
     let expected = "\
-IP        MAC                HOSTNAME  START                END                  STATE   INTERFACE
-10.0.0.1  02:00:00:00:00:01  café      2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
-10.0.0.2  02:00:00:00:00:02  abcd      2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+IP        MAC                HOSTNAME    START                END                  STATE   INTERFACE
+10.0.0.1  02:00:00:00:00:01  éééééééééé  2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+10.0.0.2  02:00:00:00:00:02  abcd        2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+";
+    assert_eq!(table, expected);
+}
+
+#[test]
+fn widths_count_double_width_characters_as_two_columns() {
+    // Six characters, twelve terminal columns.
+    let table = render(
+        &[complete(1, "日本語ホスト"), complete(2, "abcd")],
+        &TimeZone::UTC,
+    );
+    let expected = "\
+IP        MAC                HOSTNAME      START                END                  STATE   INTERFACE
+10.0.0.1  02:00:00:00:00:01  日本語ホスト  2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+10.0.0.2  02:00:00:00:00:02  abcd          2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
 ";
     assert_eq!(table, expected);
 }
@@ -157,5 +176,20 @@ fn empty_text_shows_as_missing() {
     assert_eq!(
         row,
         "10.0.0.1  02:00:00:00:00:01  -         -      -    free   -"
+    );
+}
+
+#[test]
+fn escapes_bidi_and_format_characters_in_text_columns() {
+    let mut spoof = complete(1, "evil\u{202e}txt.exe");
+    spoof.interface = Some("lan\u{2066}\u{200b}".into());
+    let row = render(&[spoof], &TimeZone::UTC)
+        .lines()
+        .nth(1)
+        .expect("one lease row")
+        .to_owned();
+    assert_eq!(
+        row,
+        "10.0.0.1  02:00:00:00:00:01  evil\\u{202e}txt.exe  2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan\\u{2066}\\u{200b}"
     );
 }

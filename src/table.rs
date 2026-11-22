@@ -5,9 +5,12 @@
 //! which reads the same on a terminal, in a pipe and in a file.
 
 use std::fmt::Write as _;
+use std::ops::RangeInclusive;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+
+use unicode_width::UnicodeWidthStr;
 
 use crate::{Lease, LeaseSource, SourceError};
 
@@ -29,6 +32,31 @@ const GAP: &str = "  ";
 const MISSING: &str = "-";
 /// Fixed `strftime` format of the start and end times.
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+/// Unicode format characters (general category `Cf`): invisible, and some
+/// (the bidirectional overrides and isolates) reorder the text around them.
+const FORMAT_CHARS: [RangeInclusive<char>; 21] = [
+    '\u{ad}'..='\u{ad}',
+    '\u{600}'..='\u{605}',
+    '\u{61c}'..='\u{61c}',
+    '\u{6dd}'..='\u{6dd}',
+    '\u{70f}'..='\u{70f}',
+    '\u{890}'..='\u{891}',
+    '\u{8e2}'..='\u{8e2}',
+    '\u{180e}'..='\u{180e}',
+    '\u{200b}'..='\u{200f}',
+    '\u{202a}'..='\u{202e}',
+    '\u{2060}'..='\u{2064}',
+    '\u{2066}'..='\u{206f}',
+    '\u{feff}'..='\u{feff}',
+    '\u{fff9}'..='\u{fffb}',
+    '\u{110bd}'..='\u{110bd}',
+    '\u{110cd}'..='\u{110cd}',
+    '\u{13430}'..='\u{1343f}',
+    '\u{1bca0}'..='\u{1bca3}',
+    '\u{1d173}'..='\u{1d17a}',
+    '\u{e0001}'..='\u{e0001}',
+    '\u{e0020}'..='\u{e007f}',
+];
 
 /// Fetches every lease from `source` and renders them as a table, ordered
 /// by IP address, with times shown in `tz`.
@@ -80,15 +108,15 @@ fn optional_time(value: Option<Timestamp>, tz: &TimeZone) -> String {
     )
 }
 
-/// Escapes control characters so text a DHCP client chose (a hostname)
-/// cannot move the cursor or recolour the terminal, and so every character
-/// left takes one column; an empty value shows as missing.
+/// Escapes control and format characters so text a DHCP client chose (a
+/// hostname) cannot move the cursor, recolour the terminal or reorder the
+/// row; an empty value shows as missing.
 fn sanitize(text: &str) -> String {
     if text.is_empty() {
         return MISSING.to_owned();
     }
     text.chars().fold(String::new(), |mut out, c| {
-        if c.is_control() {
+        if is_unsafe(c) {
             let _ = write!(out, "{}", c.escape_unicode());
         } else {
             out.push(c);
@@ -97,12 +125,18 @@ fn sanitize(text: &str) -> String {
     })
 }
 
-/// The widest cell of each column, headers included, in characters.
+/// Whether `c` must be escaped before it reaches the terminal.
+fn is_unsafe(c: char) -> bool {
+    c.is_control() || FORMAT_CHARS.iter().any(|range| range.contains(&c))
+}
+
+/// The widest cell of each column, headers included, in terminal columns
+/// (a CJK character or an emoji takes two).
 fn column_widths(rows: &[[String; COLUMNS]]) -> [usize; COLUMNS] {
-    let mut widths = HEADERS.map(str::len);
+    let mut widths = HEADERS.map(UnicodeWidthStr::width);
     for row in rows {
         for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.chars().count());
+            *width = (*width).max(cell.width());
         }
     }
     widths
@@ -117,7 +151,8 @@ fn push_row<S: AsRef<str>>(out: &mut String, row: &[S; COLUMNS], widths: &[usize
         if index == last {
             out.push_str(cell);
         } else {
-            let _ = write!(out, "{cell:<width$}{GAP}");
+            let padding = width.saturating_sub(cell.width());
+            let _ = write!(out, "{cell}{:padding$}{GAP}", "");
         }
     }
     out.push('\n');
