@@ -2,6 +2,7 @@
 
 mod cli;
 
+use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -24,7 +25,7 @@ enum RunError {
 }
 
 fn main() -> ExitCode {
-    let env = |name: &str| std::env::var(name).ok();
+    let env = |name: &str| std::env::var_os(name);
     match execute(&cli::Cli::parse(), &env, &TimeZone::system()) {
         Ok(output) => {
             print!("{output}");
@@ -40,7 +41,7 @@ fn main() -> ExitCode {
 /// Loads the settings (environment read with `env`), then runs `cli`.
 fn execute(
     cli: &cli::Cli,
-    env: &dyn Fn(&str) -> Option<String>,
+    env: &dyn Fn(&str) -> Option<OsString>,
     local: &TimeZone,
 ) -> Result<String, RunError> {
     // Checked now so a bad config fails early; the SSH source that consumes

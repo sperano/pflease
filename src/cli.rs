@@ -21,7 +21,7 @@ pub struct Cli {
 #[derive(Debug, Default, Args)]
 pub struct ConfigArgs {
     /// Config file [default: ~/.config/pflease/config.toml, or under
-    /// `XDG_CONFIG_HOME` when set].
+    /// `XDG_CONFIG_HOME` when it is set to an absolute path].
     #[arg(long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
     /// Named firewall from the config file's [firewalls.<name>] tables.

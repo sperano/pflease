@@ -4,7 +4,8 @@ List and filter pfSense DHCP leases from the terminal.
 
 Early development: `pflease list` renders leases as a table (`--utc` for
 UTC times) and reads its configuration, but no lease source is implemented
-yet, so it exits with `no lease source configured`.
+yet. It exits with ``missing setting `host` `` until a `host` is configured
+(see below), then with `no lease source configured`.
 
 ```bash
 cargo run -- list
@@ -15,7 +16,7 @@ cargo run -- list
 `pflease` reads the firewall's lease database over SSH, using your `ssh`
 (its config, agent and `known_hosts`). It reads
 `~/.config/pflease/config.toml` (`$XDG_CONFIG_HOME/pflease/config.toml` when
-that is set), or the file given with `--config`:
+that is set to an absolute path), or the file given with `--config`:
 
 ```toml
 # SSH destination: hostname, address or ~/.ssh/config alias. Required.
@@ -46,9 +47,9 @@ environment, then flags.
 | `lease_file`    | `PFLEASE_LEASE_FILE`    | `--lease-file`    |
 | (firewall name) | `PFLEASE_FIREWALL`      | `--firewall`      |
 
-An empty environment variable counts as unset. No setting holds a secret:
-the SSH key stays with `ssh`, and unknown keys such as `password` are
-rejected.
+An empty value, in the file, the environment or a flag, counts as unset. No
+setting holds a secret: the SSH key stays with `ssh`, and unknown keys such
+as `password` are rejected without echoing their value.
 
 ## License
 

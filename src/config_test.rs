@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io;
 use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
-use super::{ConfigError, DEFAULT_LEASE_FILE, Layer, Options, Setting, Settings, load};
+use super::{ConfigError, DEFAULT_LEASE_FILE, Layer, Location, Options, Setting, Settings, load};
 
 /// A config file with top-level settings and two named firewalls.
 const FULL_FILE: &str = r#"
@@ -28,19 +29,19 @@ const ENV_PORT: u16 = 2203;
 /// Port set by a flag in the precedence tests.
 const FLAG_PORT: u16 = 2204;
 
-fn port(value: u16) -> NonZeroU16 {
+pub(super) fn port(value: u16) -> NonZeroU16 {
     NonZeroU16::new(value).expect("test ports are non-zero")
 }
 
 /// A temporary directory holding `config.toml` with `contents`.
-fn file(contents: &str) -> (TempDir, PathBuf) {
+pub(super) fn file(contents: &str) -> (TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("config.toml");
     std::fs::write(&path, contents).expect("write config");
     (dir, path)
 }
 
-fn with_config(path: &Path) -> Options {
+pub(super) fn with_config(path: &Path) -> Options {
     Options {
         config: Some(path.to_owned()),
         ..Options::default()
@@ -48,10 +49,10 @@ fn with_config(path: &Path) -> Options {
 }
 
 /// Loads with an environment made of `vars`.
-fn load_with(options: &Options, vars: &[(&str, &str)]) -> Result<Settings, ConfigError> {
-    let vars: HashMap<String, String> = vars
+pub(super) fn load_with(options: &Options, vars: &[(&str, &str)]) -> Result<Settings, ConfigError> {
+    let vars: HashMap<String, OsString> = vars
         .iter()
-        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+        .map(|(k, v)| ((*k).to_owned(), OsString::from(v)))
         .collect();
     load(options, &|name| vars.get(name).cloned())
 }
@@ -309,46 +310,6 @@ fn empty_user_leaves_it_to_ssh() {
 }
 
 #[test]
-fn default_path_is_under_xdg_config_home() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let config_dir = dir.path().join("pflease");
-    std::fs::create_dir(&config_dir).expect("mkdir");
-    std::fs::write(config_dir.join("config.toml"), "host = \"xdg.example\"\n").expect("write");
-    let xdg = dir.path().to_str().expect("utf-8 temp path");
-    let settings = load_with(
-        &Options::default(),
-        &[("XDG_CONFIG_HOME", xdg), ("HOME", "/nonexistent")],
-    )
-    .expect("loads");
-    assert_eq!(settings.host, "xdg.example");
-}
-
-#[test]
-fn default_path_falls_back_to_home_dot_config() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let config_dir = dir.path().join(".config").join("pflease");
-    std::fs::create_dir_all(&config_dir).expect("mkdir");
-    std::fs::write(config_dir.join("config.toml"), "host = \"home.example\"\n").expect("write");
-    let home = dir.path().to_str().expect("utf-8 temp path");
-    let settings = load_with(&Options::default(), &[("HOME", home)]).expect("loads");
-    assert_eq!(settings.host, "home.example");
-}
-
-#[test]
-fn relative_xdg_config_home_is_ignored() {
-    let err = load_with(
-        &Options::default(),
-        &[("XDG_CONFIG_HOME", "relative"), ("HOME", "/home/someone")],
-    )
-    .expect_err("no host");
-    assert_eq!(
-        err.to_string(),
-        "missing setting `host`: set `host` in /home/someone/.config/pflease/config.toml, \
-         the PFLEASE_HOST environment variable, or --host"
-    );
-}
-
-#[test]
 fn missing_default_file_is_not_an_error() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().to_str().expect("utf-8 temp path");
@@ -378,13 +339,20 @@ fn missing_explicit_config_file_is_an_error() {
 }
 
 #[test]
-fn unknown_key_such_as_a_password_is_rejected() {
+fn unknown_key_such_as_a_password_is_rejected_without_its_value() {
     let (_dir, path) = file("host = \"h\"\npassword = \"hunter2\"\n");
     let err = load_with(&with_config(&path), &[]).expect_err("unknown key");
-    assert!(matches!(err, ConfigError::Parse { .. }), "{err:?}");
-    assert!(
-        err.to_string().contains("unknown field `password`"),
-        "{err}"
+    let ConfigError::Parse { location, .. } = &err else {
+        panic!("expected a parse error, got {err:?}");
+    };
+    assert_eq!(*location, Some(Location { line: 2, column: 1 }));
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "invalid config file {}: unknown field `password`, expected one of `host`, \
+             `user`, `port`, `identity_file`, `lease_file`, `firewalls` (line 2, column 1)",
+            path.display()
+        )
     );
 }
 
@@ -399,7 +367,10 @@ fn unknown_key_in_a_named_firewall_is_rejected() {
 fn invalid_toml_names_the_file() {
     let (_dir, path) = file("host = \n");
     let err = load_with(&with_config(&path), &[]).expect_err("bad toml");
-    assert!(matches!(err, ConfigError::Parse { .. }), "{err:?}");
+    let ConfigError::Parse { location, .. } = &err else {
+        panic!("expected a parse error, got {err:?}");
+    };
+    assert_eq!(*location, Some(Location { line: 1, column: 8 }));
     assert!(
         err.to_string()
             .starts_with(&format!("invalid config file {}: ", path.display())),
@@ -445,4 +416,54 @@ fn user_that_ssh_would_read_as_an_option_is_rejected() {
     )
     .expect_err("option-like user");
     assert_eq!(err.to_string(), "invalid user: `-v` starts with `-`");
+}
+
+#[test]
+fn empty_flags_leave_the_file_and_env_settings() {
+    let (_dir, path) = file(FULL_FILE);
+    let options = Options {
+        config: Some(path),
+        firewall: Some(String::new()),
+        flags: Layer {
+            host: Some(String::new()),
+            user: Some(String::new()),
+            port: None,
+            identity_file: Some(PathBuf::new()),
+            lease_file: Some(String::new()),
+        },
+    };
+    let settings = load_with(&options, &[("PFLEASE_USER", "env-user")]).expect("loads");
+    assert_eq!(
+        settings,
+        Settings {
+            host: "file.example".into(),
+            user: Some("env-user".into()),
+            port: Some(port(2201)),
+            identity_file: Some("/keys/file".into()),
+            lease_file: "/file/dhcpd.leases".into(),
+        }
+    );
+}
+
+#[test]
+fn empty_file_paths_fall_back_to_the_defaults() {
+    let (_dir, path) = file("host = \"h\"\nidentity_file = \"\"\nlease_file = \"\"\n");
+    let settings = load_with(&with_config(&path), &[]).expect("loads");
+    assert_eq!(settings.identity_file, None);
+    assert_eq!(settings.lease_file, DEFAULT_LEASE_FILE);
+}
+
+#[test]
+fn empty_values_in_a_named_firewall_leave_the_top_level_ones() {
+    let (_dir, path) = file(
+        "host = \"top.example\"\nlease_file = \"/top\"\n\n\
+         [firewalls.lab]\nhost = \"\"\nlease_file = \"\"\n",
+    );
+    let options = Options {
+        firewall: Some("lab".into()),
+        ..with_config(&path)
+    };
+    let settings = load_with(&options, &[]).expect("loads");
+    assert_eq!(settings.host, "top.example");
+    assert_eq!(settings.lease_file, "/top");
 }

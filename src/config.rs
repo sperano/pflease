@@ -7,6 +7,7 @@
 //! `password` are rejected, so the file needs no permission check.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fmt;
 use std::io;
 use std::num::NonZeroU16;
@@ -89,6 +90,19 @@ pub struct Layer {
 }
 
 impl Layer {
+    /// `self` with every empty value unset, so it cannot hide a lower layer's.
+    fn without_empty(self) -> Self {
+        Self {
+            host: self.host.filter(|host| !host.is_empty()),
+            user: self.user.filter(|user| !user.is_empty()),
+            port: self.port,
+            identity_file: self
+                .identity_file
+                .filter(|path| !path.as_os_str().is_empty()),
+            lease_file: self.lease_file.filter(|path| !path.is_empty()),
+        }
+    }
+
     /// `self` with every unset setting taken from `lower`.
     fn over(self, lower: Self) -> Self {
         Self {
@@ -149,11 +163,14 @@ pub enum ConfigError {
     /// missing file.
     #[error("cannot read config file {}: {source}", path.display())]
     Read { path: PathBuf, source: io::Error },
-    /// The config file is not valid TOML or has an unknown key.
-    #[error("invalid config file {}: {source}", path.display())]
+    /// The config file is not valid TOML or has an unknown key. Only the
+    /// parser's message is kept, not its snippet of the offending line, so
+    /// a value such as `password = "..."` is never echoed.
+    #[error("invalid config file {}: {message}{}", path.display(), at(*location))]
     Parse {
         path: PathBuf,
-        source: toml::de::Error,
+        message: String,
+        location: Option<Location>,
     },
     /// The selected firewall is not in the config file.
     #[error("{}", unknown_firewall(name, path.as_deref(), known))]
@@ -171,6 +188,31 @@ pub enum ConfigError {
     /// A setting has a value it cannot take.
     #[error("invalid {}: {reason}", setting.key())]
     Invalid { setting: Setting, reason: String },
+}
+
+/// A 1-based position in the config file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Location {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl Location {
+    /// The position of byte `offset` in `text`.
+    fn of(text: &str, offset: usize) -> Self {
+        let before = text.get(..offset).unwrap_or(text);
+        let line_start = before.rfind('\n').map_or(0, |newline| newline + 1);
+        Self {
+            line: before.matches('\n').count() + 1,
+            column: before[line_start..].chars().count() + 1,
+        }
+    }
+}
+
+fn at(location: Option<Location>) -> String {
+    location.map_or_else(String::new, |Location { line, column }| {
+        format!(" (line {line}, column {column})")
+    })
 }
 
 /// Where the config file lives, for messages.
@@ -209,36 +251,41 @@ fn missing(setting: Setting, path: Option<&Path>) -> String {
     )
 }
 
+/// Reads one environment variable; `None` when it is unset.
+type Env<'a> = &'a dyn Fn(&str) -> Option<OsString>;
+
 /// Loads the settings: the file, then the environment (read with `env`),
-/// then `options`.
+/// then `options`. An empty value, in any layer, counts as unset.
 ///
 /// # Errors
 ///
 /// Returns a [`ConfigError`] when the file cannot be read or parsed, the
-/// selected firewall is not defined, a value is invalid, or `host` is set
-/// nowhere.
-pub fn load(
-    options: &Options,
-    env: &dyn Fn(&str) -> Option<String>,
-) -> Result<Settings, ConfigError> {
+/// selected firewall is not defined, a value is invalid (a `PFLEASE_*`
+/// variable that is not UTF-8 included), or `host` is set nowhere.
+pub fn load(options: &Options, env: Env<'_>) -> Result<Settings, ConfigError> {
     let env = |name: &str| env(name).filter(|value| !value.is_empty());
     let path = options.config.clone().or_else(|| default_path(&env));
     let file = match &path {
         Some(path) => read_file(path, options.config.is_some())?,
         None => None,
     };
-    let firewall = options
-        .firewall
-        .clone()
-        .or_else(|| env(Setting::Firewall.env()));
+    let firewall = match options.firewall.clone().filter(|name| !name.is_empty()) {
+        Some(name) => Some(name),
+        None => env_text(&env, Setting::Firewall)?,
+    };
     let from_file = file_layer(file, firewall.as_deref(), path.as_deref())?;
-    let merged = options.flags.clone().over(env_layer(&env)?).over(from_file);
+    let merged = options
+        .flags
+        .clone()
+        .without_empty()
+        .over(env_layer(&env)?)
+        .over(from_file);
     finish(merged, path)
 }
 
 /// `$XDG_CONFIG_HOME/pflease/config.toml`, else `$HOME/.config/...`; a
 /// relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says.
-fn default_path(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+fn default_path(env: Env<'_>) -> Option<PathBuf> {
     let base = env("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|dir| dir.is_absolute())
@@ -260,9 +307,10 @@ fn read_file(path: &Path, explicit: bool) -> Result<Option<FileConfig>, ConfigEr
     };
     toml::from_str(&text)
         .map(Some)
-        .map_err(|source| ConfigError::Parse {
+        .map_err(|err| ConfigError::Parse {
             path: path.to_owned(),
-            source,
+            message: err.message().to_owned(),
+            location: err.span().map(|span| Location::of(&text, span.start)),
         })
 }
 
@@ -291,12 +339,24 @@ fn file_layer(
         identity_file: file.identity_file,
         lease_file: file.lease_file,
     };
-    Ok(named.over(top))
+    Ok(named.without_empty().over(top.without_empty()))
+}
+
+/// The value of `setting`'s environment variable, which must be UTF-8.
+fn env_text(env: Env<'_>, setting: Setting) -> Result<Option<String>, ConfigError> {
+    env(setting.env())
+        .map(|value| {
+            value.into_string().map_err(|_| ConfigError::Invalid {
+                setting,
+                reason: format!("{} is not valid UTF-8", setting.env()),
+            })
+        })
+        .transpose()
 }
 
 /// The settings from the `PFLEASE_*` environment variables.
-fn env_layer(env: &dyn Fn(&str) -> Option<String>) -> Result<Layer, ConfigError> {
-    let port = env(Setting::Port.env())
+fn env_layer(env: Env<'_>) -> Result<Layer, ConfigError> {
+    let port = env_text(env, Setting::Port)?
         .map(|value| {
             value.parse().map_err(|err| ConfigError::Invalid {
                 setting: Setting::Port,
@@ -305,25 +365,23 @@ fn env_layer(env: &dyn Fn(&str) -> Option<String>) -> Result<Layer, ConfigError>
         })
         .transpose()?;
     Ok(Layer {
-        host: env(Setting::Host.env()),
-        user: env(Setting::User.env()),
+        host: env_text(env, Setting::Host)?,
+        user: env_text(env, Setting::User)?,
         port,
         identity_file: env(Setting::IdentityFile.env()).map(PathBuf::from),
-        lease_file: env(Setting::LeaseFile.env()),
+        lease_file: env_text(env, Setting::LeaseFile)?,
     })
 }
 
-/// Checks the merged settings and fills in the defaults.
+/// Checks the merged settings, whose empty values are already unset, and
+/// fills in the defaults.
 fn finish(merged: Layer, path: Option<PathBuf>) -> Result<Settings, ConfigError> {
-    let host = merged
-        .host
-        .filter(|host| !host.is_empty())
-        .ok_or(ConfigError::Missing {
-            setting: Setting::Host,
-            path,
-        })?;
+    let host = merged.host.ok_or(ConfigError::Missing {
+        setting: Setting::Host,
+        path,
+    })?;
     check_not_option(Setting::Host, &host)?;
-    let user = merged.user.filter(|user| !user.is_empty());
+    let user = merged.user;
     if let Some(user) = &user {
         check_not_option(Setting::User, user)?;
     }
@@ -352,3 +410,7 @@ fn check_not_option(setting: Setting, value: &str) -> Result<(), ConfigError> {
 #[cfg(test)]
 #[path = "config_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "config_env_test.rs"]
+mod env_tests;

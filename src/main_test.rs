@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::net::Ipv4Addr;
 
 use clap::Parser;
@@ -114,7 +115,7 @@ fn list_utc_shows_times_in_utc() {
 }
 
 /// An environment with no variables, so no config file is found.
-fn no_env(_: &str) -> Option<String> {
+fn no_env(_: &str) -> Option<OsString> {
     None
 }
 
@@ -137,5 +138,12 @@ fn execute_with_valid_config_reaches_the_missing_source() {
         &local(),
     )
     .expect_err("no source yet");
+    assert!(matches!(err, RunError::NoSource), "{err:?}");
+}
+
+#[test]
+fn execute_reads_settings_from_the_environment() {
+    let env = |name: &str| (name == "PFLEASE_HOST").then(|| OsString::from("fw.example"));
+    let err = execute(&parse(&["pflease", "list"]), &env, &local()).expect_err("no source yet");
     assert!(matches!(err, RunError::NoSource), "{err:?}");
 }
