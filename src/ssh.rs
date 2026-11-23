@@ -279,9 +279,9 @@ fn wait(child: &mut Child, deadline: Instant) -> io::Result<Option<ExitStatus>> 
     }
 }
 
-/// Reads `pipe` to its end on a thread, so neither pipe fills up and
-/// blocks the child, keeping at most `limit` bytes; past them, `excess`
-/// says what happens to the rest.
+/// Reads `pipe` on a thread, so neither pipe fills up and blocks the
+/// child, keeping at most `limit` bytes; past them, `excess` closes the
+/// pipe (stdout) or reads the rest to its end and discards it (stderr).
 fn drain(
     pipe: Option<impl Read + Send + 'static>,
     limit: usize,
