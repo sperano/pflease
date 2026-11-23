@@ -150,15 +150,38 @@ fn repeated_criterion_accepts_any_of_its_values() {
 }
 
 #[test]
-fn repeated_ip_and_state_accept_any_of_their_values() {
+fn repeated_ip_accepts_any_of_its_values() {
     let filter = ip("10.0.0.1").ip("10.0.0.3".parse().expect("valid"));
     assert!(filter.matches(&lease(1)));
     assert!(!filter.matches(&lease(2)));
     assert!(filter.matches(&lease(3)));
-    let states = Filter::default()
+}
+
+#[test]
+fn repeated_state_accepts_either_value() {
+    let filter = Filter::default()
         .state(LeaseState::Free)
         .state(LeaseState::Active);
-    assert!(states.matches(&lease(1)));
+    let in_state = |state| Lease { state, ..lease(1) };
+    assert!(filter.matches(&in_state(LeaseState::Free)));
+    assert!(filter.matches(&in_state(LeaseState::Active)));
+    assert!(!filter.matches(&in_state(LeaseState::Released)));
+}
+
+#[test]
+fn repeated_interface_accepts_either_value() {
+    let filter = Filter::default().interface("wan").interface("lan");
+    assert!(filter.matches(&on(Some("wan"))));
+    assert!(filter.matches(&on(Some("lan"))));
+    assert!(!filter.matches(&on(Some("opt1"))));
+}
+
+#[test]
+fn repeated_mac_accepts_either_prefix() {
+    let filter = mac("aa:bb:cc:00:00:01").mac("aa:bb:cc:00:00:03".parse().expect("valid"));
+    assert!(filter.matches(&lease(1)));
+    assert!(!filter.matches(&lease(2)));
+    assert!(filter.matches(&lease(3)));
 }
 
 #[test]
