@@ -56,6 +56,11 @@
 				<ipaddrv6>2001:db8::30</ipaddrv6>
 				<hostname>camera6</hostname>
 			</staticmap>
+			<staticmap>
+				<mac>02:00:00:00:00:31</mac>
+				<ipaddr>192.0.2.31</ipaddr>
+				<hostname>v6-only</hostname>
+			</staticmap>
 		</lan>
 	</dhcpdv6>
 </pfsense>

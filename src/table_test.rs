@@ -209,9 +209,32 @@ IP        MAC                HOSTNAME  START                END                 
 }
 
 #[test]
-fn list_all_filters_static_mappings_too() {
+fn list_all_filters_static_mappings_by_state() {
     let source = FakeSource::Mapped {
         leases: vec![complete(1, "a")],
+        mappings: vec![mapping(2, "fixed"), mapping(3, "other")],
+    };
+    let filter = Filter::default().state(LeaseState::Static);
+    let table = list(
+        &source,
+        Scope::All,
+        &filter,
+        Sort::default(),
+        &TimeZone::UTC,
+    )
+    .expect("fake succeeds");
+    let ips: Vec<&str> = table
+        .lines()
+        .skip(1)
+        .map(|line| line.split_whitespace().next().expect("IP column"))
+        .collect();
+    assert_eq!(ips, ["10.0.0.2", "10.0.0.3"]);
+}
+
+#[test]
+fn list_all_filters_static_mappings_by_state_and_hostname() {
+    let source = FakeSource::Mapped {
+        leases: vec![complete(1, "fixer")],
         mappings: vec![mapping(2, "fixed"), mapping(3, "other")],
     };
     let filter = Filter::default().state(LeaseState::Static).hostname("fix");
