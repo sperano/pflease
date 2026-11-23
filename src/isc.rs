@@ -208,6 +208,9 @@ impl Parser {
                     let body = self.lease_body(head.end_line)?;
                     return lease(&head, &body, subnets).map(Some);
                 }
+                End::Open if runs_into_lease(&head.words) => {
+                    return Err(ParseLeasesError::new(head.line, ErrorKind::Unterminated));
+                }
                 End::Open => self.skip_block(head.end_line)?,
             }
         }
@@ -274,6 +277,15 @@ impl Parser {
             }
         }
         Ok(())
+    }
+}
+
+/// Whether a block header ends in `lease <IPv4>` after other words: a
+/// statement missing its `;` ran into the next lease's header.
+fn runs_into_lease(words: &[String]) -> bool {
+    match words {
+        [_, .., keyword, address] => keyword == LEASE && address.parse::<Ipv4Addr>().is_ok(),
+        _ => false,
     }
 }
 

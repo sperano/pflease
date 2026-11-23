@@ -3,9 +3,10 @@
 List and filter pfSense DHCP leases from the terminal.
 
 Early development: `pflease list` renders leases as a table (`--utc` for
-UTC times) and reads its configuration, but no lease source is implemented
-yet. It exits with ``missing setting `host` `` until a `host` is configured
-(see below), then with `no lease source configured`.
+UTC times) and reads its configuration. The ISC lease reader over SSH
+exists but `list` does not use it yet: it exits with
+``missing setting `host` `` until a `host` is configured (see below), then
+with `no lease source configured`.
 
 `list` filters with `--hostname` (substring), `--mac` (address or prefix),
 `--ip` (CIDR, `a-b` range or address), `--state` and `--interface`.

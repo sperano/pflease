@@ -1,19 +1,29 @@
 use std::ffi::OsString;
 use std::io;
 use std::num::NonZeroU16;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use super::{CONNECT_TIMEOUT, MAX_STDERR, NO_MESSAGE, Ssh, SshError, message, shell_quote};
+use super::{
+    CONNECT_TIMEOUT, MAX_FILE_SIZE, MAX_STDERR, NO_MESSAGE, Ssh, SshError, message, shell_quote,
+};
 use crate::Subnets;
 use crate::config::Settings;
-use crate::test_support::fake_program;
+use crate::test_support::{fake_program, spawn_lock};
 
 /// Timeout for fake programs that are meant to finish.
 const GENEROUS: Duration = Duration::from_secs(30);
 /// Timeout for the fake program that never finishes.
 const SHORT: Duration = Duration::from_millis(200);
+/// Seconds a hung fake program sleeps: past [`GENEROUS`], so a read that
+/// waited for it instead of killing it shows.
+const HUNG_SECONDS: u64 = 60;
 /// Port in the argument tests.
 const TEST_PORT: u16 = 2222;
+/// Output well past a pipe buffer (64 KiB on Linux), which only a drained
+/// pipe lets through.
+const LARGE_OUTPUT: usize = 256 * 1024;
+/// File size limit in the size tests.
+const SMALL_LIMIT: usize = 16;
 
 fn settings() -> Settings {
     Settings {
@@ -32,12 +42,36 @@ fn os(args: &[&str]) -> Vec<OsString> {
 
 /// `settings()` reached through a fake program running `body`.
 fn read_with(body: &str, timeout: Duration) -> Result<Vec<u8>, SshError> {
+    read_limited(body, timeout, MAX_FILE_SIZE)
+}
+
+/// [`read_with`], refusing files larger than `limit`.
+fn read_limited(body: &str, timeout: Duration, limit: usize) -> Result<Vec<u8>, SshError> {
     let dir = tempfile::tempdir().expect("temp dir");
     let (program, _guard) = fake_program(dir.path(), body);
     Ssh::new(&settings())
         .with_program(program)
         .with_timeout(timeout)
+        .with_max_file_size(limit)
         .read_file("/var/db/it's leases")
+}
+
+fn assert_timed_out(err: &SshError) {
+    assert!(
+        matches!(err, SshError::TimedOut { host, timeout } if host == "fw.example" && *timeout == SHORT),
+        "{err:?}"
+    );
+}
+
+/// Whether process `pid` still exists, by `kill -0`.
+fn process_exists(pid: &str) -> bool {
+    let _guard = spawn_lock();
+    std::process::Command::new("kill")
+        .args(["-0", pid])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("run kill")
+        .success()
 }
 
 #[test]
@@ -160,11 +194,19 @@ fn silent_failure_says_there_was_no_message() {
 
 #[test]
 fn hung_ssh_is_killed_after_the_timeout() {
-    let err = read_with("exec sleep 30", SHORT).expect_err("times out");
-    assert!(
-        matches!(&err, SshError::TimedOut { host, timeout } if host == "fw.example" && *timeout == SHORT),
-        "{err:?}"
+    let pid_dir = tempfile::tempdir().expect("temp dir");
+    let pid_file = pid_dir.path().join("pid");
+    // The script writes its pid, then becomes the `sleep` that hangs.
+    let body = format!(
+        "echo $$ > '{}'; exec sleep {HUNG_SECONDS}",
+        pid_file.display()
     );
+    let started = Instant::now();
+    let err = read_with(&body, SHORT).expect_err("times out");
+    assert!(started.elapsed() < GENEROUS, "waited for the hung ssh");
+    assert_timed_out(&err);
+    let pid = std::fs::read_to_string(&pid_file).expect("fake wrote its pid");
+    assert!(!process_exists(pid.trim()), "ssh {pid} still runs");
     assert_eq!(
         err.to_string(),
         "ssh to fw.example did not finish within 0.2 s"
@@ -172,9 +214,58 @@ fn hung_ssh_is_killed_after_the_timeout() {
 }
 
 #[test]
+fn pipe_held_open_after_exit_times_out() {
+    // A background child keeps stdout open after the script exits 0, like
+    // a `ProxyCommand` outliving `ssh`.
+    let body = format!("sleep {HUNG_SECONDS} & echo partial");
+    let err = read_with(&body, SHORT).expect_err("times out");
+    assert_timed_out(&err);
+}
+
+#[test]
+fn output_larger_than_a_pipe_buffer_is_read_whole() {
+    let body = format!("head -c {LARGE_OUTPUT} /dev/zero");
+    let out = read_with(&body, GENEROUS).expect("reads");
+    assert_eq!(out, vec![0; LARGE_OUTPUT]);
+}
+
+#[test]
+fn file_of_exactly_the_limit_is_read() {
+    let body = format!("head -c {SMALL_LIMIT} /dev/zero");
+    let out = read_limited(&body, GENEROUS, SMALL_LIMIT).expect("reads");
+    assert_eq!(out, vec![0; SMALL_LIMIT]);
+}
+
+#[test]
+fn file_over_the_limit_is_refused() {
+    // Endless output: the refusal must not wait for the deadline either.
+    let err = read_limited("exec cat /dev/zero", GENEROUS, SMALL_LIMIT).expect_err("too large");
+    assert!(
+        matches!(&err, SshError::TooLarge { host, path, limit }
+            if host == "fw.example" && path == "/var/db/it's leases" && *limit == SMALL_LIMIT),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "/var/db/it's leases on fw.example is larger than 16 bytes"
+    );
+}
+
+#[test]
+fn stderr_past_its_limit_does_not_block_ssh() {
+    let body = format!("head -c {LARGE_OUTPUT} /dev/zero | tr '\\0' x >&2; exit 255");
+    let err = read_with(&body, GENEROUS).expect_err("fails");
+    assert!(
+        matches!(&err, SshError::Connect { stderr, .. } if *stderr == "x".repeat(MAX_STDERR)),
+        "{err:?}"
+    );
+}
+
+#[test]
 fn missing_program_is_a_spawn_error() {
     let dir = tempfile::tempdir().expect("temp dir");
     let missing = dir.path().join("no-ssh");
+    let _guard = spawn_lock();
     let err = Ssh::new(&settings())
         .with_program(&missing)
         .read_file("/x")

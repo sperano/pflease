@@ -123,6 +123,22 @@ fn leases_keep_the_order_their_addresses_first_appear() {
 }
 
 #[test]
+fn hardwareless_first_block_keeps_its_place_in_the_order() {
+    let text = "lease 192.0.2.9 { binding state abandoned; }\n\
+                lease 192.0.2.1 { binding state active; hardware ethernet 02:00:00:00:00:01; }\n\
+                lease 192.0.2.9 { binding state active; hardware ethernet 02:00:00:00:00:09; }\n";
+    let ips: Vec<Ipv4Addr> = parse(text, &Subnets::default())
+        .expect("parses")
+        .iter()
+        .map(|lease| lease.ip)
+        .collect();
+    assert_eq!(
+        ips,
+        [Ipv4Addr::new(192, 0, 2, 9), Ipv4Addr::new(192, 0, 2, 1)]
+    );
+}
+
+#[test]
 fn epoch_times_and_their_comment_are_read() {
     let lease = only_lease(&lease_with(
         "  starts epoch 1700000000; # Tue Nov 14 22:13:20 2023\n  ends epoch 1700003600;",
@@ -160,7 +176,36 @@ fn empty_hostname_is_none_and_escapes_are_decoded() {
 fn nested_blocks_and_other_statements_are_ignored() {
     let text = format!(
         "failover peer \"fw\" state {{ my state normal; partner state {{ x; }} }}\n{}",
-        lease_with("  on expiry { set x = \"}\"; }\n  tstp 0 2026/11/22 00:00:00;\n  ;")
+        lease_with(
+            "  on expiry { binding state free; hardware ethernet 02:00:00:00:00:99; \
+             set x = \"}\"; }\n  tstp 0 2026/11/22 00:00:00;\n  ;"
+        )
+    );
+    assert_eq!(
+        only_lease(&text),
+        Lease {
+            ip: Ipv4Addr::new(192, 0, 2, 1),
+            mac: MacAddr::new([2, 0, 0, 0, 0, 1]),
+            hostname: None,
+            start: None,
+            end: None,
+            state: LeaseState::Active,
+            interface: None,
+        }
+    );
+}
+
+#[test]
+fn statement_missing_its_semicolon_before_a_lease_is_an_error() {
+    let text = format!("authoring-byte-order little-endian\n{}", lease_with(""));
+    assert_eq!(error(&text), (1, ErrorKind::Unterminated));
+}
+
+#[test]
+fn block_header_naming_lease_without_an_address_is_skipped() {
+    let text = format!(
+        "failover peer \"lease\" state {{ my state normal; }}\n{}",
+        lease_with("")
     );
     assert_eq!(only_lease(&text).ip, Ipv4Addr::new(192, 0, 2, 1));
 }

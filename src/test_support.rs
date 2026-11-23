@@ -136,12 +136,18 @@ pub(crate) fn fixture_leases() -> Vec<Lease> {
     ]
 }
 
+/// Holds [`SPAWN_LOCK`]; take it around any spawn in a test, a fake
+/// program's or not.
+pub(crate) fn spawn_lock() -> MutexGuard<'static, ()> {
+    SPAWN_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// A fake program in `dir` running the POSIX shell `body`; hold the
 /// returned guard while the program runs.
 pub(crate) fn fake_program(dir: &Path, body: &str) -> (PathBuf, MutexGuard<'static, ()>) {
     use std::os::unix::fs::PermissionsExt;
 
-    let guard = SPAWN_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+    let guard = spawn_lock();
     let path = dir.join("fake-ssh");
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake program");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(SCRIPT_MODE))
