@@ -166,12 +166,14 @@ fn interface_sorts_ignoring_case_missing_last() {
         on(2, Some("opt1")),
         on(3, Some("LAN")),
         on(4, Some("")),
+        on(5, Some("Opt2")),
     ];
+    // Byte order would put "Opt2" before "opt1".
     assert_eq!(
         order(leases.clone(), SortKey::Interface, false),
-        [3, 2, 1, 4]
+        [3, 2, 5, 1, 4]
     );
-    assert_eq!(order(leases, SortKey::Interface, true), [2, 3, 1, 4]);
+    assert_eq!(order(leases, SortKey::Interface, true), [5, 2, 3, 1, 4]);
 }
 
 #[test]
