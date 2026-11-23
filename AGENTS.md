@@ -14,11 +14,23 @@ Goals, in order:
 2. Filter and sort them (by hostname, MAC, IP range, state, interface).
 3. Promote a lease to a static mapping on the firewall.
 
-How leases are fetched is not decided yet. Candidates: the pfSense REST API
-package, or SSH reading the lease database (ISC `dhcpd.leases`, or Kea's on
-newer pfSense releases). Settle it in a PR before building on it, and keep
-the source behind a trait so the display and filter code does not depend on
-it.
+Fetch leases over SSH from the single configured pfSense firewall. The
+verified deployment runs pfSense Plus 26.03 with ISC DHCP, so the current
+source is `/var/dhcpd/var/db/dhcpd.leases`. Parse ISC lease blocks with the
+last block for each IP taking precedence. Derive interface names from the
+configured IPv4 subnets under `interfaces` in `/conf/config.xml`; keep that
+configuration in memory and never log it because it contains secrets.
+
+Shell out to OpenSSH so the user's SSH config, agent and known hosts apply.
+Current access uses the key-authenticated `admin` account; keep the SSH host
+and user in runtime configuration rather than in source.
+Keep transport and parsing separate behind `LeaseSource`; when this firewall
+migrates to Kea, replace the parser and lease-file path without changing the
+display or filter code. The REST API package is not installed, and ISC DHCP
+is deprecated. Decide the write transport for static mappings separately
+before implementing `promote`; SSH read access does not imply direct edits
+to `config.xml`. Recorded, anonymized source fixtures are in
+`tests/fixtures/`.
 
 ## Commands
 

@@ -1,0 +1,39 @@
+# Anonymized from an ISC DHCP 4.4.3-P1 pfSense lease file.
+# Addresses are documentation ranges; MACs, IDs and hostnames are invented.
+authoring-byte-order little-endian;
+
+lease 192.0.2.10 {
+  starts 0 2026/11/22 12:00:00;
+  ends 1 2026/11/23 12:00:00;
+  cltt 0 2026/11/22 12:00:00;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:01;
+  uid "fixture-client-id";
+  client-hostname "fixture-host-a";
+}
+
+lease 198.51.100.42 {
+  starts 0 2026/11/22 12:10:00;
+  ends 1 2026/11/23 12:10:00;
+  tstp 1 2026/11/23 12:10:00;
+  cltt 0 2026/11/22 12:10:00;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:02;
+  set vendor-class-identifier = "fixture-vendor";
+}
+
+lease 192.0.2.10 {
+  starts 0 2026/11/22 12:00:00;
+  ends 0 2026/11/22 13:00:00;
+  cltt 0 2026/11/22 13:00:00;
+  binding state free;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:01;
+  uid "fixture-client-id";
+  client-hostname "fixture-host-a";
+}
