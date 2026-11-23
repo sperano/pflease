@@ -467,3 +467,17 @@ fn empty_values_in_a_named_firewall_leave_the_top_level_ones() {
     assert_eq!(settings.host, "top.example");
     assert_eq!(settings.lease_file, "/top");
 }
+
+#[test]
+fn type_error_on_a_known_key_shows_its_value() {
+    let (_dir, path) = file("host = \"h\"\nport = \"ssh\"\n");
+    let err = load_with(&with_config(&path), &[]).expect_err("wrong type");
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "invalid config file {}: invalid type: string \"ssh\", expected a nonzero u16 \
+             (line 2, column 8)",
+            path.display()
+        )
+    );
+}

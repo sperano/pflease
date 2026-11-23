@@ -163,9 +163,11 @@ pub enum ConfigError {
     /// missing file.
     #[error("cannot read config file {}: {source}", path.display())]
     Read { path: PathBuf, source: io::Error },
-    /// The config file is not valid TOML or has an unknown key. Only the
-    /// parser's message is kept, not its snippet of the offending line, so
-    /// a value such as `password = "..."` is never echoed.
+    /// The config file is not valid TOML, has an unknown key or a value of
+    /// the wrong type. Only the parser's message is kept, not its snippet
+    /// of the offending line, so the value of an unknown key such as
+    /// `password = "..."` is never echoed; a type error on a known key
+    /// (which holds no secret) shows that value.
     #[error("invalid config file {}: {message}{}", path.display(), at(*location))]
     Parse {
         path: PathBuf,
@@ -261,7 +263,8 @@ type Env<'a> = &'a dyn Fn(&str) -> Option<OsString>;
 ///
 /// Returns a [`ConfigError`] when the file cannot be read or parsed, the
 /// selected firewall is not defined, a value is invalid (a `PFLEASE_*`
-/// variable that is not UTF-8 included), or `host` is set nowhere.
+/// variable other than `PFLEASE_IDENTITY_FILE` that is not UTF-8
+/// included), or `host` is set nowhere.
 pub fn load(options: &Options, env: Env<'_>) -> Result<Settings, ConfigError> {
     let env = |name: &str| env(name).filter(|value| !value.is_empty());
     let path = options.config.clone().or_else(|| default_path(&env));
