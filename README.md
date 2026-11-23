@@ -3,7 +3,11 @@
 List and filter pfSense DHCP leases from the terminal.
 
 `pflease list` reads the firewall's DHCP lease database over SSH and
-renders it as a table, times in local time (`--utc` for UTC).
+renders it as a table, times in local time (`--utc` for UTC). The DHCP
+server records no lease for a client with a static mapping, so those
+clients are missing from it; `--all` also reads the static mappings from
+the firewall's configuration, `/conf/config.xml`, and lists them in state
+`static` with no start or end time.
 
 `list` filters with `--hostname` (substring), `--mac` (address or prefix),
 `--ip` (CIDR, `a-b` range or address), `--state` and `--interface`.
@@ -16,6 +20,7 @@ follow ascending IP.
 cargo run -- list
 cargo run -- list --ip 10.0.0.0/24 --state active --state free
 cargo run -- list --sort hostname --reverse
+cargo run -- list --all --state static
 ```
 
 ## Setup
@@ -28,7 +33,9 @@ On the firewall (pfSense with the ISC DHCP backend, not Kea):
    `ssh`: in System > User Manager, the user's "Authorized SSH Keys" and the
    "User - System: Shell account access" privilege. `pflease` runs `cat`
    on the lease file, `/var/dhcpd/var/db/dhcpd.leases`, which that user
-   must be able to read.
+   must be able to read, and, for `list --all`, on `/conf/config.xml`.
+   That file also holds secrets: `pflease` keeps only the static mappings'
+   MAC, address and hostname from it, in memory, and never prints the rest.
 
 On the workstation, check that `ssh` reaches it without prompting
 (`pflease` runs `ssh` in batch mode, so a passphrase must come from the

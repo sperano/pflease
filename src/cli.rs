@@ -75,6 +75,11 @@ pub enum Command {
         /// Show start and end times in UTC instead of local time.
         #[arg(long)]
         utc: bool,
+        /// Also show the static mappings from the firewall's configuration,
+        /// in state `static`: the DHCP server hands their addresses out
+        /// without recording a lease.
+        #[arg(long)]
+        all: bool,
         #[command(flatten)]
         filter: FilterArgs,
         #[command(flatten)]

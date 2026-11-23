@@ -7,7 +7,11 @@
 use crate::config::Settings;
 use crate::isc::{self, ParseLeasesError};
 use crate::ssh::{Ssh, SshError};
+use crate::staticmap::{self, ParseStaticMapError};
 use crate::{Lease, Subnets};
+
+/// Where pfSense keeps its configuration, static mappings included.
+pub const CONFIG_XML: &str = "/conf/config.xml";
 
 /// Why a source could not produce its leases.
 #[derive(Debug, thiserror::Error)]
@@ -25,6 +29,13 @@ pub enum SourceError {
         path: String,
         source: ParseLeasesError,
     },
+    /// The firewall configuration was read but its static mappings could
+    /// not be.
+    #[error("cannot read static mappings from {path}: {source}")]
+    StaticMap {
+        path: String,
+        source: ParseStaticMapError,
+    },
 }
 
 /// A backend that reports the firewall's DHCP leases.
@@ -36,10 +47,20 @@ pub trait LeaseSource {
     /// Returns a [`SourceError`] when the backend cannot be reached or its
     /// answer cannot be read.
     fn leases(&self) -> Result<Vec<Lease>, SourceError>;
+
+    /// The fixed addresses the DHCP server hands out from static mappings,
+    /// as leases in [`crate::LeaseState::Static`], which the server does
+    /// not report as leases.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SourceError`] when the backend cannot be reached or its
+    /// answer cannot be read.
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError>;
 }
 
 /// ISC `dhcpd`'s lease database, read over SSH; see [`isc`] for how it is
-/// parsed.
+/// parsed. Static mappings come from [`CONFIG_XML`], see [`staticmap`].
 #[derive(Debug, Clone)]
 pub struct IscSshSource {
     ssh: Ssh,
@@ -78,15 +99,29 @@ impl LeaseSource for IscSshSource {
             source,
         })
     }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
+        let bytes = self.ssh.read_file(CONFIG_XML)?;
+        staticmap::parse_bytes(&bytes, &self.subnets).map_err(|source| SourceError::StaticMap {
+            path: CONFIG_XML.to_owned(),
+            source,
+        })
+    }
 }
 
 /// A source for tests: returns fixed leases, or fails with a fixed message.
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) enum FakeSource {
-    /// Returns these leases on every call.
+    /// Returns these leases on every call, and no static mappings.
     Leases(Vec<Lease>),
-    /// Fails with [`SourceError::Unavailable`] carrying this message.
+    /// Returns `leases` and `mappings` on every call.
+    Mapped {
+        leases: Vec<Lease>,
+        mappings: Vec<Lease>,
+    },
+    /// Fails both calls with [`SourceError::Unavailable`] carrying this
+    /// message.
     Failing(String),
 }
 
@@ -94,7 +129,15 @@ pub(crate) enum FakeSource {
 impl LeaseSource for FakeSource {
     fn leases(&self) -> Result<Vec<Lease>, SourceError> {
         match self {
-            Self::Leases(leases) => Ok(leases.clone()),
+            Self::Leases(leases) | Self::Mapped { leases, .. } => Ok(leases.clone()),
+            Self::Failing(message) => Err(SourceError::Unavailable(message.clone())),
+        }
+    }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
+        match self {
+            Self::Leases(_) => Ok(Vec::new()),
+            Self::Mapped { mappings, .. } => Ok(mappings.clone()),
             Self::Failing(message) => Err(SourceError::Unavailable(message.clone())),
         }
     }

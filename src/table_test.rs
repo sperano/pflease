@@ -3,9 +3,9 @@ use std::net::Ipv4Addr;
 use jiff::Timestamp;
 use jiff::tz::{Offset, TimeZone};
 
-use super::{list, render};
+use super::{Scope, list, render};
 use crate::source::FakeSource;
-use crate::{Filter, Lease, LeaseState, MacAddr, Sort, SortKey, SourceError};
+use crate::{Filter, Lease, LeaseSource, LeaseState, MacAddr, Sort, SortKey, SourceError};
 
 /// 2023-11-14 22:13:20 UTC.
 const START_SECONDS: i64 = 1_700_000_000;
@@ -78,8 +78,14 @@ fn shows_times_in_the_given_zone() {
 #[test]
 fn list_orders_by_ip_numerically() {
     let source = FakeSource::Leases(sample_leases());
-    let table =
-        list(&source, &Filter::default(), Sort::default(), &TimeZone::UTC).expect("fake succeeds");
+    let table = list(
+        &source,
+        Scope::Leases,
+        &Filter::default(),
+        Sort::default(),
+        &TimeZone::UTC,
+    )
+    .expect("fake succeeds");
     let ips: Vec<&str> = table
         .lines()
         .skip(1)
@@ -97,7 +103,14 @@ IP        MAC                HOSTNAME  START                END                 
 10.0.0.2  02:00:00:00:00:02  b         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
 ";
     assert_eq!(
-        list(&source, &Filter::default(), Sort::default(), &TimeZone::UTC).expect("fake succeeds"),
+        list(
+            &source,
+            Scope::Leases,
+            &Filter::default(),
+            Sort::default(),
+            &TimeZone::UTC
+        )
+        .expect("fake succeeds"),
         expected
     );
 }
@@ -112,7 +125,14 @@ IP        MAC                HOSTNAME  START                END                 
 10.0.0.3  02:00:00:00:00:03  c         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
 ";
     assert_eq!(
-        list(&source, &filter, Sort::default(), &TimeZone::UTC).expect("fake succeeds"),
+        list(
+            &source,
+            Scope::Leases,
+            &filter,
+            Sort::default(),
+            &TimeZone::UTC
+        )
+        .expect("fake succeeds"),
         expected
     );
 }
@@ -124,7 +144,14 @@ fn list_orders_leases_by_the_given_sort() {
         key: SortKey::Hostname,
         reverse: true,
     };
-    let table = list(&source, &Filter::default(), sort, &TimeZone::UTC).expect("fake succeeds");
+    let table = list(
+        &source,
+        Scope::Leases,
+        &Filter::default(),
+        sort,
+        &TimeZone::UTC,
+    )
+    .expect("fake succeeds");
     let ips: Vec<&str> = table
         .lines()
         .skip(1)
@@ -136,9 +163,111 @@ fn list_orders_leases_by_the_given_sort() {
 #[test]
 fn list_passes_source_errors_through() {
     let source = FakeSource::Failing("connection refused".into());
-    let err = list(&source, &Filter::default(), Sort::default(), &TimeZone::UTC)
-        .expect_err("failing source fails");
+    let err = list(
+        &source,
+        Scope::Leases,
+        &Filter::default(),
+        Sort::default(),
+        &TimeZone::UTC,
+    )
+    .expect_err("failing source fails");
     assert!(matches!(&err, SourceError::Unavailable(m) if m == "connection refused"));
+}
+
+/// A static mapping at `10.0.0.<last_octet>` named `hostname`.
+fn mapping(last_octet: u8, hostname: &str) -> Lease {
+    Lease {
+        hostname: Some(hostname.into()),
+        state: LeaseState::Static,
+        ..lease(last_octet)
+    }
+}
+
+#[test]
+fn list_all_adds_static_mappings_sorted_with_the_leases() {
+    let source = FakeSource::Mapped {
+        leases: vec![complete(3, "c"), complete(1, "a")],
+        mappings: vec![mapping(2, "fixed")],
+    };
+    let expected = "\
+IP        MAC                HOSTNAME  START                END                  STATE   INTERFACE
+10.0.0.1  02:00:00:00:00:01  a         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+10.0.0.2  02:00:00:00:00:02  fixed     -                    -                    static  -
+10.0.0.3  02:00:00:00:00:03  c         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+";
+    assert_eq!(
+        list(
+            &source,
+            Scope::All,
+            &Filter::default(),
+            Sort::default(),
+            &TimeZone::UTC
+        )
+        .expect("fake succeeds"),
+        expected
+    );
+}
+
+#[test]
+fn list_all_filters_static_mappings_too() {
+    let source = FakeSource::Mapped {
+        leases: vec![complete(1, "a")],
+        mappings: vec![mapping(2, "fixed"), mapping(3, "other")],
+    };
+    let filter = Filter::default().state(LeaseState::Static).hostname("fix");
+    let table = list(
+        &source,
+        Scope::All,
+        &filter,
+        Sort::default(),
+        &TimeZone::UTC,
+    )
+    .expect("fake succeeds");
+    let ips: Vec<&str> = table
+        .lines()
+        .skip(1)
+        .map(|line| line.split_whitespace().next().expect("IP column"))
+        .collect();
+    assert_eq!(ips, ["10.0.0.2"]);
+}
+
+/// A source whose leases are fine but whose static mappings fail.
+struct MappingsFail;
+
+impl LeaseSource for MappingsFail {
+    fn leases(&self) -> Result<Vec<Lease>, SourceError> {
+        Ok(vec![complete(1, "a")])
+    }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
+        Err(SourceError::Unavailable("no config".into()))
+    }
+}
+
+#[test]
+fn list_without_all_does_not_read_static_mappings() {
+    let table = list(
+        &MappingsFail,
+        Scope::Leases,
+        &Filter::default(),
+        Sort::default(),
+        &TimeZone::UTC,
+    )
+    .expect("leases only");
+    assert_eq!(table.lines().count(), 2, "{table}");
+}
+
+#[test]
+fn list_all_passes_static_mapping_errors_through() {
+    let err = list(
+        &MappingsFail,
+        Scope::All,
+        &Filter::default(),
+        Sort::default(),
+        &TimeZone::UTC,
+    )
+    .expect_err("mappings fail");
+    assert!(matches!(&err, SourceError::Unavailable(m) if m == "no config"));
 }
 
 #[test]

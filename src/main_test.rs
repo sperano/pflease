@@ -16,6 +16,10 @@ impl LeaseSource for Failing {
     fn leases(&self) -> Result<Vec<Lease>, SourceError> {
         Err(SourceError::Unavailable("connection refused".into()))
     }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
+        Err(SourceError::Unavailable("connection refused".into()))
+    }
 }
 
 /// A source with no leases.
@@ -23,6 +27,10 @@ struct Empty;
 
 impl LeaseSource for Empty {
     fn leases(&self) -> Result<Vec<Lease>, SourceError> {
+        Ok(Vec::new())
+    }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
         Ok(Vec::new())
     }
 }
@@ -46,6 +54,10 @@ impl LeaseSource for Started {
             state: LeaseState::Active,
             interface: None,
         }])
+    }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
+        Ok(Vec::new())
     }
 }
 
@@ -113,22 +125,33 @@ fn execute_stops_on_a_config_error_before_running() {
     );
 }
 
+/// A lease at `10.0.0.<last>` named `name`, in `state`.
+fn named(last: u8, name: &str, state: LeaseState) -> Lease {
+    Lease {
+        ip: Ipv4Addr::new(10, 0, 0, last),
+        mac: MacAddr::new([0x02, 0, 0, 0, 0, last]),
+        hostname: Some(name.into()),
+        start: None,
+        end: None,
+        state,
+        interface: None,
+    }
+}
+
 /// A source with two leases, `10.0.0.1` named `alpha` and `10.0.0.2` named
-/// `beta`.
+/// `beta`, and one static mapping, `10.0.0.3` named `gamma`.
 struct Two;
 
 impl LeaseSource for Two {
     fn leases(&self) -> Result<Vec<Lease>, SourceError> {
-        let lease = |last: u8, name: &str| Lease {
-            ip: Ipv4Addr::new(10, 0, 0, last),
-            mac: MacAddr::new([0x02, 0, 0, 0, 0, last]),
-            hostname: Some(name.into()),
-            start: None,
-            end: None,
-            state: LeaseState::Active,
-            interface: None,
-        };
-        Ok(vec![lease(1, "alpha"), lease(2, "beta")])
+        Ok(vec![
+            named(1, "alpha", LeaseState::Active),
+            named(2, "beta", LeaseState::Active),
+        ])
+    }
+
+    fn static_mappings(&self) -> Result<Vec<Lease>, SourceError> {
+        Ok(vec![named(3, "gamma", LeaseState::Static)])
     }
 }
 
@@ -161,4 +184,16 @@ fn list_applies_the_filter_flags() {
     )
     .expect("leases");
     assert_eq!(hostnames(&output), ["beta"]);
+}
+
+#[test]
+fn list_shows_only_leases_without_all() {
+    let output = run(&parse(&["pflease", "list"]), &Two, &local()).expect("leases");
+    assert_eq!(hostnames(&output), ["alpha", "beta"]);
+}
+
+#[test]
+fn list_all_adds_the_static_mappings() {
+    let output = run(&parse(&["pflease", "list", "--all"]), &Two, &local()).expect("leases");
+    assert_eq!(hostnames(&output), ["alpha", "beta", "gamma"]);
 }

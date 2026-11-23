@@ -58,20 +58,35 @@ const FORMAT_CHARS: [RangeInclusive<char>; 21] = [
     '\u{e0020}'..='\u{e007f}',
 ];
 
-/// Fetches every lease from `source`, keeps those `filter` accepts and
-/// renders them as a table in the order `sort` gives, with times shown in
-/// `tz`.
+/// What [`list`] fetches from its source.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Scope {
+    /// The leases the DHCP server recorded.
+    #[default]
+    Leases,
+    /// The leases and the static mappings, which the server does not record.
+    All,
+}
+
+/// Fetches every lease from `source` (with its static mappings when `scope`
+/// is [`Scope::All`]), keeps those `filter` accepts and renders them as a
+/// table in the order `sort` gives, with times shown in `tz`.
 ///
 /// # Errors
 ///
-/// Returns the source's [`SourceError`] when it cannot produce its leases.
+/// Returns the source's [`SourceError`] when it cannot produce its leases
+/// or, for [`Scope::All`], its static mappings.
 pub fn list(
     source: &dyn LeaseSource,
+    scope: Scope,
     filter: &Filter,
     sort: Sort,
     tz: &TimeZone,
 ) -> Result<String, SourceError> {
     let mut leases = source.leases()?;
+    if scope == Scope::All {
+        leases.extend(source.static_mappings()?);
+    }
     leases.retain(|lease| filter.matches(lease));
     sort.apply(&mut leases);
     Ok(render(&leases, tz))
