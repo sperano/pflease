@@ -13,6 +13,7 @@ categories = ["command-line-utilities"]
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 jiff = "0.2"
+roxmltree = "0.21.2"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }

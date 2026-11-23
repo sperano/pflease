@@ -16,6 +16,7 @@ pub mod sort;
 pub mod source;
 pub mod ssh;
 pub mod state;
+pub mod staticmap;
 pub mod subnets;
 pub mod table;
 #[cfg(test)]

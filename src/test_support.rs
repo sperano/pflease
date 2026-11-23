@@ -12,6 +12,9 @@ use crate::{Lease, LeaseState, MacAddr, Subnets};
 /// An anonymized ISC 4.4.3-P1 `dhcpd.leases`.
 pub(crate) const DHCPD_LEASES: &str = include_str!("../tests/fixtures/dhcpd.leases");
 
+/// A hand-written pfSense `config.xml` with static mappings.
+pub(crate) const CONFIG_XML: &str = include_str!("../tests/fixtures/config.xml");
+
 /// Mode of the fake `ssh` script: readable and executable by its owner.
 const SCRIPT_MODE: u32 = 0o700;
 
@@ -133,6 +136,41 @@ pub(crate) fn fixture_leases() -> Vec<Lease> {
                 ],
             )
         },
+    ]
+}
+
+/// The static mappings of [`CONFIG_XML`] with [`fixture_subnets`]: those
+/// with a MAC and an address, IPv6 ones left out.
+pub(crate) fn fixture_mappings() -> Vec<Lease> {
+    let mapping =
+        |ip: Ipv4Addr, mac: [u8; 2], hostname: Option<&str>, interface: Option<&str>| Lease {
+            ip,
+            mac: self::mac(mac),
+            hostname: hostname.map(str::to_owned),
+            start: None,
+            end: None,
+            state: LeaseState::Static,
+            interface: interface.map(str::to_owned),
+        };
+    vec![
+        mapping(
+            Ipv4Addr::new(192, 0, 2, 30),
+            [0x00, 0x30],
+            Some("camera"),
+            Some("lan"),
+        ),
+        mapping(
+            Ipv4Addr::new(198, 51, 100, 40),
+            [0x01, 0x40],
+            None,
+            Some("iot"),
+        ),
+        mapping(
+            Ipv4Addr::new(203, 0, 113, 7),
+            [0x02, 0x07],
+            Some("guest-tv"),
+            None,
+        ),
     ]
 }
 

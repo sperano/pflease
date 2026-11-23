@@ -59,3 +59,28 @@ fn failing_fake_reports_unavailable() {
         "lease source unavailable: connection refused"
     );
 }
+
+#[test]
+fn fake_with_only_leases_has_no_static_mappings() {
+    let source = FakeSource::Leases(sample_leases());
+    assert_eq!(source.static_mappings().expect("fake succeeds"), []);
+}
+
+#[test]
+fn mapped_fake_returns_its_leases_and_mappings() {
+    let [lease, mapping] = sample_leases().try_into().expect("two leases");
+    let source = FakeSource::Mapped {
+        leases: vec![lease.clone()],
+        mappings: vec![mapping.clone()],
+    };
+    assert_eq!(source.leases().expect("fake succeeds"), [lease]);
+    assert_eq!(source.static_mappings().expect("fake succeeds"), [mapping]);
+}
+
+#[test]
+fn failing_fake_fails_static_mappings_too() {
+    let err = FakeSource::Failing("connection refused".into())
+        .static_mappings()
+        .expect_err("failing fake fails");
+    assert!(matches!(&err, SourceError::Unavailable(m) if m == "connection refused"));
+}

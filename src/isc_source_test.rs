@@ -6,7 +6,8 @@ use crate::Subnets;
 use crate::config::Settings;
 use crate::isc::ErrorKind;
 use crate::ssh::{Ssh, SshError};
-use crate::test_support::{fake_program, fixture_leases, fixture_subnets};
+use crate::staticmap::ParseStaticMapError;
+use crate::test_support::{fake_program, fixture_leases, fixture_mappings, fixture_subnets};
 
 /// Timeout for fake programs, which all finish.
 const GENEROUS: Duration = Duration::from_secs(30);
@@ -22,15 +23,29 @@ fn settings() -> Settings {
     }
 }
 
-/// The leases of a source whose fake `ssh` runs `body`.
-fn leases_with(body: &str) -> Result<Vec<crate::Lease>, SourceError> {
+/// What `call` returns from a source whose fake `ssh` runs `body`.
+fn source_with<T>(body: &str, call: impl FnOnce(&IscSshSource) -> T) -> T {
     let dir = tempfile::tempdir().expect("temp dir");
     let (program, _guard) = fake_program(dir.path(), body);
     let settings = settings();
     let ssh = Ssh::new(&settings)
         .with_program(program)
         .with_timeout(GENEROUS);
-    IscSshSource::with_ssh(ssh, settings.lease_file, settings.interfaces).leases()
+    call(&IscSshSource::with_ssh(
+        ssh,
+        settings.lease_file,
+        settings.interfaces,
+    ))
+}
+
+/// The leases of a source whose fake `ssh` runs `body`.
+fn leases_with(body: &str) -> Result<Vec<crate::Lease>, SourceError> {
+    source_with(body, IscSshSource::leases)
+}
+
+/// The static mappings of a source whose fake `ssh` runs `body`.
+fn mappings_with(body: &str) -> Result<Vec<crate::Lease>, SourceError> {
+    source_with(body, IscSshSource::static_mappings)
 }
 
 #[test]
@@ -87,4 +102,44 @@ fn new_takes_the_lease_file_and_subnets_from_settings() {
     assert_eq!(source.lease_file, settings.lease_file);
     assert_eq!(source.subnets, Subnets::default());
     assert_eq!(source.ssh, Ssh::new(&settings));
+}
+
+#[test]
+fn reads_static_mappings_from_the_firewall_config_over_ssh() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/config.xml");
+    // Serves the fixture only when asked for the configuration file.
+    let body = format!(
+        "for arg; do last=$arg; done\n\
+         [ \"$last\" = \"cat -- '/conf/config.xml'\" ] || exit 1\n\
+         exec cat '{}'",
+        fixture.display()
+    );
+    assert_eq!(mappings_with(&body).expect("reads"), fixture_mappings());
+}
+
+#[test]
+fn unreadable_static_mappings_name_the_config_file() {
+    let err = mappings_with("printf '<opnsense/>'").expect_err("fails");
+    assert!(
+        matches!(
+            &err,
+            SourceError::StaticMap { path, source: ParseStaticMapError::NotPfSense(root) }
+                if path == "/conf/config.xml" && root == "opnsense"
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "cannot read static mappings from /conf/config.xml: \
+         root element is <opnsense>, not <pfsense>"
+    );
+}
+
+#[test]
+fn ssh_failure_reading_static_mappings_reaches_the_caller() {
+    let err = mappings_with("echo 'Connection timed out' >&2; exit 255").expect_err("fails");
+    assert!(
+        matches!(&err, SourceError::Ssh(SshError::Connect { .. })),
+        "{err:?}"
+    );
 }

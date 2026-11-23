@@ -99,6 +99,13 @@ fn known_names_lists_every_canonical_name_in_order() {
             "reserved",
             "declined",
             "expired-reclaimed",
+            "static",
         ]
     );
+}
+
+#[test]
+fn parses_and_displays_static() {
+    assert_eq!(parse("Static"), Ok(LeaseState::Static));
+    assert_eq!(LeaseState::Static.to_string(), "static");
 }

@@ -61,6 +61,18 @@ fn parses_list_utc() {
 }
 
 #[test]
+fn parses_list_without_all_by_default() {
+    let cli = parse(&["pflease", "list"]);
+    assert!(matches!(cli.command, Command::List { all: false, .. }));
+}
+
+#[test]
+fn parses_list_all() {
+    let cli = parse(&["pflease", "list", "--all"]);
+    assert!(matches!(cli.command, Command::List { all: true, .. }));
+}
+
+#[test]
 fn list_without_filters_has_none() {
     let args = list_args(&[]);
     assert_eq!(Filter::from(&args), Filter::default());

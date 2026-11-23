@@ -17,6 +17,7 @@
 //! | ISC `reserved`                          | [`LeaseState::Reserved`]        |
 //! | Kea `declined`                          | [`LeaseState::Declined`]        |
 //! | Kea `expired-reclaimed`                 | [`LeaseState::ExpiredReclaimed`]|
+//! | pfSense static mapping, `static`        | [`LeaseState::Static`]          |
 //! | anything else                           | [`LeaseState::Other`]           |
 //!
 //! Kea's `default` is its state for an assigned, in-use lease, which is what
@@ -24,7 +25,9 @@
 //! Kea's `expired-reclaimed` stays apart from ISC's `expired`: Kea has
 //! already freed the address, ISC has not. Kea's `declined` stays apart from
 //! ISC's `abandoned` although both mean a client reported an address
-//! conflict, because their recovery differs. Surrounding whitespace is
+//! conflict, because their recovery differs. Neither server records a
+//! client with a static mapping as a lease; [`LeaseState::Static`] marks the
+//! mappings pflease reads from pfSense's configuration. Surrounding whitespace is
 //! trimmed and names match case-insensitively; an unknown name is kept in
 //! [`LeaseState::Other`], trimmed but in its original case, rather than
 //! guessed into a known state.
@@ -57,13 +60,15 @@ pub enum LeaseState {
     Declined,
     /// Expired and already reclaimed by the server (Kea).
     ExpiredReclaimed,
+    /// A fixed address from a pfSense static mapping, not a lease.
+    Static,
     /// A state name neither backend is known to use.
     Other(UnknownState),
 }
 
 /// Every state but [`LeaseState::Other`], the names [`LeaseState::from_str`]
 /// recognises.
-const KNOWN: [LeaseState; 11] = [
+const KNOWN: [LeaseState; 12] = [
     LeaseState::Active,
     LeaseState::Free,
     LeaseState::Expired,
@@ -75,6 +80,7 @@ const KNOWN: [LeaseState; 11] = [
     LeaseState::Reserved,
     LeaseState::Declined,
     LeaseState::ExpiredReclaimed,
+    LeaseState::Static,
 ];
 
 /// Kea's name for an assigned lease, parsed as [`LeaseState::Active`].
@@ -136,6 +142,7 @@ impl LeaseState {
             Self::Reserved => "reserved",
             Self::Declined => "declined",
             Self::ExpiredReclaimed => "expired-reclaimed",
+            Self::Static => "static",
             Self::Other(_) => return None,
         })
     }

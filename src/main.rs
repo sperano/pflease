@@ -10,6 +10,7 @@ use jiff::tz::TimeZone;
 use pflease::LeaseSource;
 use pflease::config::{self, ConfigError};
 use pflease::source::IscSshSource;
+use pflease::table::Scope;
 
 /// Why a command could not run.
 #[derive(Debug, thiserror::Error)]
@@ -51,10 +52,17 @@ fn execute(
 /// in `local` unless `--utc` is given.
 fn run(cli: &cli::Cli, source: &dyn LeaseSource, local: &TimeZone) -> Result<String, RunError> {
     match &cli.command {
-        cli::Command::List { utc, filter, sort } => {
+        cli::Command::List {
+            utc,
+            all,
+            filter,
+            sort,
+        } => {
             let tz = if *utc { TimeZone::UTC } else { local.clone() };
+            let scope = if *all { Scope::All } else { Scope::Leases };
             Ok(pflease::table::list(
                 source,
+                scope,
                 &filter.into(),
                 sort.into(),
                 &tz,

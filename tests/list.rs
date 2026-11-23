@@ -28,6 +28,11 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dhcpd.leases")
 }
 
+/// The firewall configuration with static mappings the fake `ssh` serves.
+fn config_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/config.xml")
+}
+
 /// A config naming the fixture's two subnets.
 const CONFIG: &str = r#"
 host = "fw.example"
@@ -68,6 +73,19 @@ impl Firewall {
     /// A fake `ssh` that serves the fixture.
     fn serving_fixture() -> Self {
         Self::new(&format!("exec cat '{}'", fixture().display()), CONFIG)
+    }
+
+    /// A fake `ssh` that serves the configuration fixture when asked for
+    /// `/conf/config.xml` and the lease fixture otherwise.
+    fn serving_both_fixtures() -> Self {
+        let body = format!(
+            "for arg; do last=$arg; done\n\
+             if [ \"$last\" = \"cat -- '/conf/config.xml'\" ]; then exec cat '{}'; fi\n\
+             exec cat '{}'",
+            config_fixture().display(),
+            fixture().display()
+        );
+        Self::new(&body, CONFIG)
     }
 
     /// Runs `pflease args` with only this home's settings and `ssh`.
@@ -242,5 +260,56 @@ fn list_reports_an_unparsable_lease_file() {
         &output,
         "cannot parse lease file /var/dhcpd/var/db/dhcpd.leases: line 2: \
          invalid `starts` value \"soon\"",
+    );
+}
+
+#[test]
+fn list_all_adds_the_static_mappings_of_the_firewall_config() {
+    let firewall = Firewall::serving_both_fixtures();
+    let output = firewall.run(&["list", "--utc", "--all"], &[]);
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(stderr(&output), "");
+    assert_eq!(
+        stdout(&output),
+        "\
+IP             MAC                HOSTNAME    START                END                  STATE     INTERFACE
+192.0.2.10     02:00:00:00:00:0a  printer     2026-11-22 14:02:11  2026-11-22 16:02:11  active    lan
+192.0.2.11     02:00:00:00:00:0b  -           2026-11-21 09:15:00  2026-11-21 11:15:00  free      lan
+192.0.2.12     02:00:00:00:00:12  old-laptop  2026-11-20 07:00:00  2026-11-20 09:30:00  released  lan
+192.0.2.30     02:00:00:00:00:30  camera      -                    -                    static    lan
+198.51.100.20  02:00:00:00:01:14  thermostat  2026-11-22 13:00:05  2026-11-22 15:00:05  active    iot
+198.51.100.21  02:00:00:00:01:15  nas         2026-11-01 00:00:00  -                    active    iot
+198.51.100.40  02:00:00:00:01:40  -           -                    -                    static    iot
+203.0.113.5    02:00:00:00:02:05  -           2026-11-18 06:30:00  2026-11-18 08:30:00  expired   -
+203.0.113.7    02:00:00:00:02:07  guest-tv    -                    -                    static    -
+"
+    );
+}
+
+#[test]
+fn list_all_reads_the_config_over_ssh_after_the_leases() {
+    let firewall = Firewall::serving_both_fixtures();
+    let output = firewall.run(&["list", "--all"], &[]);
+    assert!(output.status.success(), "{output:?}");
+    // The fake records the arguments of its last run.
+    assert_eq!(
+        firewall.ssh_args().last().map(String::as_str),
+        Some("cat -- '/conf/config.xml'")
+    );
+}
+
+#[test]
+fn list_all_reports_an_unreadable_config() {
+    let firewall = Firewall::new(
+        "for arg; do last=$arg; done\n\
+         if [ \"$last\" = \"cat -- '/conf/config.xml'\" ]; then \
+         echo 'cat: /conf/config.xml: Permission denied' >&2; exit 1; fi",
+        CONFIG,
+    );
+    let output = firewall.run(&["list", "--all"], &[]);
+    assert_fails_with(
+        &output,
+        "cannot read /conf/config.xml on fw.example (exit status: 1): \
+         cat: /conf/config.xml: Permission denied",
     );
 }
