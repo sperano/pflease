@@ -2,11 +2,8 @@
 
 List and filter pfSense DHCP leases from the terminal.
 
-Early development: `pflease list` renders leases as a table (`--utc` for
-UTC times) and reads its configuration. The ISC lease reader over SSH
-exists but `list` does not use it yet: it exits with
-``missing setting `host` `` until a `host` is configured (see below), then
-with `no lease source configured`.
+`pflease list` reads the firewall's DHCP lease database over SSH and
+renders it as a table, times in local time (`--utc` for UTC).
 
 `list` filters with `--hostname` (substring), `--mac` (address or prefix),
 `--ip` (CIDR, `a-b` range or address), `--state` and `--interface`.
@@ -20,6 +17,29 @@ cargo run -- list
 cargo run -- list --ip 10.0.0.0/24 --state active --state free
 cargo run -- list --sort hostname --reverse
 ```
+
+## Setup
+
+On the firewall (pfSense with the ISC DHCP backend, not Kea):
+
+1. Enable SSH: System > Advanced > Admin Access > Secure Shell, with public
+   key authentication.
+2. Give a user an authorized key and a login that runs commands passed by
+   `ssh`: in System > User Manager, the user's "Authorized SSH Keys" and the
+   "User - System: Shell account access" privilege. `pflease` runs `cat`
+   on the lease file, `/var/dhcpd/var/db/dhcpd.leases`, which that user
+   must be able to read.
+
+On the workstation, check that `ssh` reaches it without prompting
+(`pflease` runs `ssh` in batch mode, so a passphrase must come from the
+agent and the host key must already be in `known_hosts`):
+
+```bash
+ssh leases@firewall.example.net cat /var/dhcpd/var/db/dhcpd.leases | head
+```
+
+Then write the config file below with at least `host`, and run
+`pflease list`.
 
 ## Configuration
 

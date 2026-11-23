@@ -69,27 +69,15 @@ fn parse(args: &[&str]) -> Cli {
 }
 
 #[test]
-fn list_without_source_fails_with_no_source() {
-    let err = run(&parse(&["pflease", "list"]), None, &local()).expect_err("no source");
-    assert!(matches!(err, RunError::NoSource));
-    assert_eq!(err.to_string(), "no lease source configured");
-}
-
-#[test]
 fn list_renders_the_source_table() {
-    let output = run(
-        &parse(&["pflease", "list", "--utc"]),
-        Some(&Empty),
-        &local(),
-    )
-    .expect("empty source");
+    let output =
+        run(&parse(&["pflease", "list", "--utc"]), &Empty, &local()).expect("empty source");
     assert_eq!(output, "IP  MAC  HOSTNAME  START  END  STATE  INTERFACE\n");
 }
 
 #[test]
 fn list_reports_source_errors() {
-    let err =
-        run(&parse(&["pflease", "list"]), Some(&Failing), &local()).expect_err("failing source");
+    let err = run(&parse(&["pflease", "list"]), &Failing, &local()).expect_err("failing source");
     assert!(matches!(err, RunError::Source(SourceError::Unavailable(_))));
     assert_eq!(
         err.to_string(),
@@ -99,18 +87,13 @@ fn list_reports_source_errors() {
 
 #[test]
 fn list_shows_times_in_the_local_zone_by_default() {
-    let output = run(&parse(&["pflease", "list"]), Some(&Started), &local()).expect("lease");
+    let output = run(&parse(&["pflease", "list"]), &Started, &local()).expect("lease");
     assert_eq!(start_cell(&output), "2023-11-15 00:13:20");
 }
 
 #[test]
 fn list_utc_shows_times_in_utc() {
-    let output = run(
-        &parse(&["pflease", "list", "--utc"]),
-        Some(&Started),
-        &local(),
-    )
-    .expect("lease");
+    let output = run(&parse(&["pflease", "list", "--utc"]), &Started, &local()).expect("lease");
     assert_eq!(start_cell(&output), "2023-11-14 22:13:20");
 }
 
@@ -128,24 +111,6 @@ fn execute_stops_on_a_config_error_before_running() {
         "missing setting `host`: set `host` in the config file (--config), the \
          PFLEASE_HOST environment variable, or --host"
     );
-}
-
-#[test]
-fn execute_with_valid_config_reaches_the_missing_source() {
-    let err = execute(
-        &parse(&["pflease", "list", "--host", "fw.example"]),
-        &no_env,
-        &local(),
-    )
-    .expect_err("no source yet");
-    assert!(matches!(err, RunError::NoSource), "{err:?}");
-}
-
-#[test]
-fn execute_reads_settings_from_the_environment() {
-    let env = |name: &str| (name == "PFLEASE_HOST").then(|| OsString::from("fw.example"));
-    let err = execute(&parse(&["pflease", "list"]), &env, &local()).expect_err("no source yet");
-    assert!(matches!(err, RunError::NoSource), "{err:?}");
 }
 
 /// A source with two leases, `10.0.0.1` named `alpha` and `10.0.0.2` named
@@ -180,7 +145,7 @@ fn hostnames(output: &str) -> Vec<&str> {
 fn list_applies_the_sort_flags() {
     let output = run(
         &parse(&["pflease", "list", "--sort", "hostname", "--reverse"]),
-        Some(&Two),
+        &Two,
         &local(),
     )
     .expect("leases");
@@ -191,7 +156,7 @@ fn list_applies_the_sort_flags() {
 fn list_applies_the_filter_flags() {
     let output = run(
         &parse(&["pflease", "list", "--ip", "10.0.0.2"]),
-        Some(&Two),
+        &Two,
         &local(),
     )
     .expect("leases");
