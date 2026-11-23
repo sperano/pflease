@@ -4,9 +4,9 @@ use std::fmt;
 use std::str::FromStr;
 
 /// Number of octets in an Ethernet address.
-const OCTETS: usize = 6;
+pub(crate) const OCTETS: usize = 6;
 /// Hex digits per octet in the textual form.
-const DIGITS_PER_OCTET: usize = 2;
+pub(crate) const DIGITS_PER_OCTET: usize = 2;
 /// Length of the textual form: six two-digit octets and five separators.
 const TEXT_LEN: usize = OCTETS * DIGITS_PER_OCTET + OCTETS - 1;
 /// Radix of each octet in the textual form.
@@ -84,7 +84,7 @@ fn separator_of(s: &str) -> Result<char, ParseMacError> {
 }
 
 /// Parses one two-digit hex octet; `from_str_radix` alone would accept a sign.
-fn parse_octet(text: &str) -> Result<u8, ParseMacError> {
+pub(crate) fn parse_octet(text: &str) -> Result<u8, ParseMacError> {
     let invalid = || ParseMacError::Hex(text.to_owned());
     if text.len() != DIGITS_PER_OCTET || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(invalid());

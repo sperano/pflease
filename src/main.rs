@@ -39,11 +39,11 @@ fn run(
     source: Option<&dyn LeaseSource>,
     local: &TimeZone,
 ) -> Result<String, RunError> {
-    match cli.command {
-        cli::Command::List { utc } => {
+    match &cli.command {
+        cli::Command::List { utc, filter } => {
             let source = source.ok_or(RunError::NoSource)?;
-            let tz = if utc { TimeZone::UTC } else { local.clone() };
-            Ok(pflease::table::list(source, &tz)?)
+            let tz = if *utc { TimeZone::UTC } else { local.clone() };
+            Ok(pflease::table::list(source, &filter.into(), &tz)?)
         }
     }
 }
