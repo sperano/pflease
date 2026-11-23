@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use jiff::tz::{Offset, TimeZone};
 use pflease::{Lease, LeaseSource, LeaseState, MacAddr, SourceError};
 
-use super::{RunError, cli::Cli, run};
+use super::{RunError, cli::Cli, execute, run};
 
 /// The library's `FakeSource` is test-only inside the library, so the binary
 /// keeps its own: a source that fails with a fixed message.
@@ -111,4 +111,31 @@ fn list_utc_shows_times_in_utc() {
     )
     .expect("lease");
     assert_eq!(start_cell(&output), "2023-11-14 22:13:20");
+}
+
+/// An environment with no variables, so no config file is found.
+fn no_env(_: &str) -> Option<String> {
+    None
+}
+
+#[test]
+fn execute_stops_on_a_config_error_before_running() {
+    let err = execute(&parse(&["pflease", "list"]), &no_env, &local()).expect_err("no host");
+    assert!(matches!(err, RunError::Config(_)), "{err:?}");
+    assert_eq!(
+        err.to_string(),
+        "missing setting `host`: set `host` in the config file (--config), the \
+         PFLEASE_HOST environment variable, or --host"
+    );
+}
+
+#[test]
+fn execute_with_valid_config_reaches_the_missing_source() {
+    let err = execute(
+        &parse(&["pflease", "list", "--host", "fw.example"]),
+        &no_env,
+        &local(),
+    )
+    .expect_err("no source yet");
+    assert!(matches!(err, RunError::NoSource), "{err:?}");
 }

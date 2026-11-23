@@ -7,10 +7,14 @@ use std::process::ExitCode;
 use clap::Parser;
 use jiff::tz::TimeZone;
 use pflease::LeaseSource;
+use pflease::config::{self, ConfigError};
 
 /// Why a command could not run.
 #[derive(Debug, thiserror::Error)]
 enum RunError {
+    /// The settings could not be loaded.
+    #[error(transparent)]
+    Config(#[from] ConfigError),
     /// No lease source is implemented yet, so `main` cannot build one.
     #[error("no lease source configured")]
     NoSource,
@@ -20,7 +24,8 @@ enum RunError {
 }
 
 fn main() -> ExitCode {
-    match run(&cli::Cli::parse(), None, &TimeZone::system()) {
+    let env = |name: &str| std::env::var(name).ok();
+    match execute(&cli::Cli::parse(), &env, &TimeZone::system()) {
         Ok(output) => {
             print!("{output}");
             ExitCode::SUCCESS
@@ -30,6 +35,18 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Loads the settings (environment read with `env`), then runs `cli`.
+fn execute(
+    cli: &cli::Cli,
+    env: &dyn Fn(&str) -> Option<String>,
+    local: &TimeZone,
+) -> Result<String, RunError> {
+    // Checked now so a bad config fails early; the SSH source that consumes
+    // the settings is built from them in a later change.
+    let _settings = config::load(&cli.config.options(), env)?;
+    run(cli, None, local)
 }
 
 /// Runs `cli` against `source` and returns what to print; times are shown
