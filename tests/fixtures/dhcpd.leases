@@ -1,0 +1,99 @@
+# The format of this file is documented in the dhcpd.leases(5) manual page.
+# This lease file was written by isc-dhcp-4.4.3-P1
+
+# authoring-byte-order entry is generated, DO NOT DELETE
+authoring-byte-order little-endian;
+
+server-duid "\000\001\000\001-\217\012\333\002\000\000\000\000\001";
+
+lease 192.0.2.12 {
+  starts 5 2026/11/20 08:00:00;
+  ends 5 2026/11/20 10:00:00;
+  cltt 5 2026/11/20 08:00:00;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:12;
+  client-hostname "old-laptop";
+}
+
+lease 192.0.2.10 {
+  starts 0 2026/11/22 14:02:11;
+  ends 0 2026/11/22 16:02:11;
+  cltt 0 2026/11/22 14:02:11;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:0a;
+  uid "\001\002\000\000\000\000\012";
+  set vendor-class-identifier = "android-dhcp-14";
+  client-hostname "printer";
+}
+
+lease 192.0.2.11 {
+  starts 6 2026/11/21 09:15:00;
+  ends 6 2026/11/21 11:15:00;
+  cltt 6 2026/11/21 09:15:00;
+  binding state free;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:0b;
+}
+
+lease 192.0.2.13 {
+  starts 4 2026/11/19 12:00:00;
+  ends 4 2026/11/19 14:00:00;
+  cltt 4 2026/11/19 12:00:00;
+  binding state abandoned;
+  next binding state free;
+  rewind binding state free;
+}
+
+host dynamic-printer {
+  dynamic;
+  hardware ethernet 02:00:00:00:00:ff;
+  fixed-address 192.0.2.250;
+}
+
+lease 198.51.100.20 {
+  starts 0 2026/11/22 13:00:05;
+  ends 0 2026/11/22 15:00:05;
+  cltt 0 2026/11/22 13:00:05;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:01:14;
+  client-hostname "thermostat";
+}
+
+lease 198.51.100.21 {
+  starts 0 2026/11/01 00:00:00;
+  ends never;
+  cltt 0 2026/11/01 00:00:00;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:01:15;
+  client-hostname "nas";
+}
+
+lease 203.0.113.5 {
+  starts 3 2026/11/18 06:30:00;
+  ends 3 2026/11/18 08:30:00;
+  cltt 3 2026/11/18 06:30:00;
+  binding state expired;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:02:05;
+}
+
+lease 192.0.2.12 {
+  starts 5 2026/11/20 07:00:00;
+  ends 5 2026/11/20 09:30:00;
+  cltt 5 2026/11/20 07:00:00;
+  binding state released;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 02:00:00:00:00:12;
+  client-hostname "old-laptop";
+}

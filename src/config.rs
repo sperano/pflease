@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::{IpRange, ParseIpRangeError, Subnets};
+
 /// Where pfSense's ISC DHCP server keeps its lease database.
 pub const DEFAULT_LEASE_FILE: &str = "/var/dhcpd/var/db/dhcpd.leases";
 /// Directory under the XDG config directory that holds the config file.
@@ -87,6 +89,10 @@ pub struct Layer {
     pub port: Option<NonZeroU16>,
     pub identity_file: Option<PathBuf>,
     pub lease_file: Option<String>,
+    /// Interface name to the subnet it serves (CIDR, `a-b` range or
+    /// address); only the config file sets it, and a firewall's table
+    /// replaces the top-level one as a whole.
+    pub interfaces: Option<BTreeMap<String, String>>,
 }
 
 impl Layer {
@@ -100,6 +106,7 @@ impl Layer {
                 .identity_file
                 .filter(|path| !path.as_os_str().is_empty()),
             lease_file: self.lease_file.filter(|path| !path.is_empty()),
+            interfaces: self.interfaces.filter(|table| !table.is_empty()),
         }
     }
 
@@ -111,6 +118,7 @@ impl Layer {
             port: self.port.or(lower.port),
             identity_file: self.identity_file.or(lower.identity_file),
             lease_file: self.lease_file.or(lower.lease_file),
+            interfaces: self.interfaces.or(lower.interfaces),
         }
     }
 }
@@ -125,6 +133,7 @@ struct FileConfig {
     port: Option<NonZeroU16>,
     identity_file: Option<PathBuf>,
     lease_file: Option<String>,
+    interfaces: Option<BTreeMap<String, String>>,
     #[serde(default)]
     firewalls: BTreeMap<String, Layer>,
 }
@@ -153,6 +162,8 @@ pub struct Settings {
     pub identity_file: Option<PathBuf>,
     /// Path of the lease database on the firewall.
     pub lease_file: String,
+    /// The subnet each interface serves, to name a lease's interface.
+    pub interfaces: Subnets,
 }
 
 /// Why the configuration could not be loaded.
@@ -190,6 +201,12 @@ pub enum ConfigError {
     /// A setting has a value it cannot take.
     #[error("invalid {}: {reason}", setting.key())]
     Invalid { setting: Setting, reason: String },
+    /// An `[interfaces]` entry is not an address range.
+    #[error("invalid subnet for interface `{name}`: {source}")]
+    Interface {
+        name: String,
+        source: ParseIpRangeError,
+    },
 }
 
 /// A 1-based position in the config file.
@@ -341,6 +358,7 @@ fn file_layer(
         port: file.port,
         identity_file: file.identity_file,
         lease_file: file.lease_file,
+        interfaces: file.interfaces,
     };
     Ok(named.without_empty().over(top.without_empty()))
 }
@@ -373,6 +391,7 @@ fn env_layer(env: Env<'_>) -> Result<Layer, ConfigError> {
         port,
         identity_file: env(Setting::IdentityFile.env()).map(PathBuf::from),
         lease_file: env_text(env, Setting::LeaseFile)?,
+        interfaces: None,
     })
 }
 
@@ -396,7 +415,20 @@ fn finish(merged: Layer, path: Option<PathBuf>) -> Result<Settings, ConfigError>
         lease_file: merged
             .lease_file
             .unwrap_or_else(|| DEFAULT_LEASE_FILE.to_owned()),
+        interfaces: subnets(merged.interfaces.unwrap_or_default())?,
     })
+}
+
+/// The `[interfaces]` table as [`Subnets`], in name order.
+fn subnets(table: BTreeMap<String, String>) -> Result<Subnets, ConfigError> {
+    table
+        .into_iter()
+        .map(|(name, range)| match range.parse::<IpRange>() {
+            Ok(range) => Ok((name, range)),
+            Err(source) => Err(ConfigError::Interface { name, source }),
+        })
+        .collect::<Result<_, _>>()
+        .map(Subnets::new)
 }
 
 /// Refuses a value `ssh` would parse as an option (`-oProxyCommand=...`).
@@ -417,3 +449,7 @@ mod tests;
 #[cfg(test)]
 #[path = "config_env_test.rs"]
 mod env_tests;
+
+#[cfg(test)]
+#[path = "config_interfaces_test.rs"]
+mod interfaces_tests;

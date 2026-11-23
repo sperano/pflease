@@ -16,7 +16,7 @@ enum RunError {
     /// The settings could not be loaded.
     #[error(transparent)]
     Config(#[from] ConfigError),
-    /// No lease source is implemented yet, so `main` cannot build one.
+    /// No lease source is wired into `list` yet, so `main` cannot build one.
     #[error("no lease source configured")]
     NoSource,
     /// The source failed to produce its leases.

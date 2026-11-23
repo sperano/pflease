@@ -8,13 +8,18 @@
 pub mod config;
 pub mod filter;
 pub mod ip_range;
+pub mod isc;
 pub mod lease;
 pub mod mac;
 pub mod mac_prefix;
 pub mod sort;
 pub mod source;
+pub mod ssh;
 pub mod state;
+pub mod subnets;
 pub mod table;
+#[cfg(test)]
+mod test_support;
 
 pub use filter::Filter;
 pub use ip_range::{IpRange, ParseIpRangeError};
@@ -24,3 +29,4 @@ pub use mac_prefix::{MacPrefix, ParseMacPrefixError};
 pub use sort::{ParseSortKeyError, Sort, SortKey};
 pub use source::{LeaseSource, SourceError};
 pub use state::{LeaseState, ParseStateError, UnknownState};
+pub use subnets::Subnets;
