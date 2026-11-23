@@ -147,3 +147,38 @@ fn execute_reads_settings_from_the_environment() {
     let err = execute(&parse(&["pflease", "list"]), &env, &local()).expect_err("no source yet");
     assert!(matches!(err, RunError::NoSource), "{err:?}");
 }
+
+/// A source with two leases, `10.0.0.1` named `alpha` and `10.0.0.2` named
+/// `beta`.
+struct Two;
+
+impl LeaseSource for Two {
+    fn leases(&self) -> Result<Vec<Lease>, SourceError> {
+        let lease = |last: u8, name: &str| Lease {
+            ip: Ipv4Addr::new(10, 0, 0, last),
+            mac: MacAddr::new([0x02, 0, 0, 0, 0, last]),
+            hostname: Some(name.into()),
+            start: None,
+            end: None,
+            state: LeaseState::Active,
+            interface: None,
+        };
+        Ok(vec![lease(1, "alpha"), lease(2, "beta")])
+    }
+}
+
+#[test]
+fn list_applies_the_filter_flags() {
+    let output = run(
+        &parse(&["pflease", "list", "--ip", "10.0.0.2"]),
+        Some(&Two),
+        &local(),
+    )
+    .expect("leases");
+    let hostnames: Vec<&str> = output
+        .lines()
+        .skip(1)
+        .map(|line| line.split_whitespace().nth(2).expect("hostname column"))
+        .collect();
+    assert_eq!(hostnames, ["beta"]);
+}
