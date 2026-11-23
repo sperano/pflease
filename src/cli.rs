@@ -58,6 +58,7 @@ impl ConfigArgs {
                 port: self.port,
                 identity_file: self.identity_file.clone(),
                 lease_file: self.lease_file.clone(),
+                interfaces: None,
             },
         }
     }

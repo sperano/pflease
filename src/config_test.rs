@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
+use crate::Subnets;
+
 use super::{ConfigError, DEFAULT_LEASE_FILE, Layer, Location, Options, Setting, Settings, load};
 
 /// A config file with top-level settings and two named firewalls.
@@ -74,6 +76,7 @@ fn all_flags() -> Layer {
         port: Some(port(FLAG_PORT)),
         identity_file: Some("/keys/flag".into()),
         lease_file: Some("/flag/dhcpd.leases".into()),
+        interfaces: None,
     }
 }
 
@@ -89,6 +92,7 @@ fn file_settings_apply_alone() {
             port: Some(port(2201)),
             identity_file: Some("/keys/file".into()),
             lease_file: "/file/dhcpd.leases".into(),
+            interfaces: Subnets::default(),
         }
     );
 }
@@ -105,6 +109,7 @@ fn env_overrides_file() {
             port: Some(port(ENV_PORT)),
             identity_file: Some("/keys/env".into()),
             lease_file: "/env/dhcpd.leases".into(),
+            interfaces: Subnets::default(),
         }
     );
 }
@@ -125,6 +130,7 @@ fn flags_override_env_and_file() {
             port: Some(port(FLAG_PORT)),
             identity_file: Some("/keys/flag".into()),
             lease_file: "/flag/dhcpd.leases".into(),
+            interfaces: Subnets::default(),
         }
     );
 }
@@ -156,6 +162,7 @@ fn optional_settings_default_to_ssh_and_the_isc_lease_file() {
             port: None,
             identity_file: None,
             lease_file: DEFAULT_LEASE_FILE.into(),
+            interfaces: Subnets::default(),
         }
     );
 }
@@ -350,7 +357,7 @@ fn unknown_key_such_as_a_password_is_rejected_without_its_value() {
         err.to_string(),
         format!(
             "invalid config file {}: unknown field `password`, expected one of `host`, \
-             `user`, `port`, `identity_file`, `lease_file`, `firewalls` (line 2, column 1)",
+             `user`, `port`, `identity_file`, `lease_file`, `interfaces`, `firewalls` (line 2, column 1)",
             path.display()
         )
     );
@@ -430,6 +437,7 @@ fn empty_flags_leave_the_file_and_env_settings() {
             port: None,
             identity_file: Some(PathBuf::new()),
             lease_file: Some(String::new()),
+            interfaces: None,
         },
     };
     let settings = load_with(&options, &[("PFLEASE_USER", "env-user")]).expect("loads");
@@ -441,6 +449,7 @@ fn empty_flags_leave_the_file_and_env_settings() {
             port: Some(port(2201)),
             identity_file: Some("/keys/file".into()),
             lease_file: "/file/dhcpd.leases".into(),
+            interfaces: Subnets::default(),
         }
     );
 }

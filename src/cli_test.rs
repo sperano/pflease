@@ -225,6 +225,7 @@ fn config_flags_map_to_options_after_the_subcommand() {
                 port: NonZeroU16::new(TEST_PORT),
                 identity_file: Some("/keys/fw".into()),
                 lease_file: Some("/tmp/dhcpd.leases".into()),
+                interfaces: None,
             },
         }
     );

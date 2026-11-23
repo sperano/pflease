@@ -33,8 +33,16 @@ identity_file = "/home/you/.ssh/id_ed25519_pfsense"
 # Optional; defaults to pfSense's ISC lease database.
 lease_file = "/var/dhcpd/var/db/dhcpd.leases"
 
+# Optional: the subnet each interface serves (CIDR, a-b range or address).
+# The lease database records no interface, so a lease's interface is the
+# narrowest of these holding its address; without a match it shows as -.
+[interfaces]
+lan = "192.0.2.0/24"
+iot = "198.51.100.0/24"
+
 # Named firewalls, selected with --firewall <name> or PFLEASE_FIREWALL.
-# Their settings override the top-level ones.
+# Their settings override the top-level ones; an [interfaces] table
+# replaces the top-level one as a whole.
 [firewalls.lab]
 host = "192.0.2.1"
 ```
@@ -51,6 +59,8 @@ environment, then flags.
 | `identity_file` | `PFLEASE_IDENTITY_FILE` | `--identity-file` |
 | `lease_file`    | `PFLEASE_LEASE_FILE`    | `--lease-file`    |
 | (firewall name) | `PFLEASE_FIREWALL`      | `--firewall`      |
+
+`[interfaces]` is set only in the file.
 
 An empty value, in the file, the environment or a flag, counts as unset. No
 setting holds a secret: the SSH key stays with `ssh`, and unknown keys such
