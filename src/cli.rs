@@ -2,7 +2,7 @@
 
 use clap::builder::{PossibleValuesParser, TypedValueParser};
 use clap::{Args, Parser, Subcommand};
-use pflease::{Filter, IpRange, LeaseState, MacPrefix};
+use pflease::{Filter, IpRange, LeaseState, MacPrefix, Sort, SortKey};
 
 /// List and filter the DHCP leases of a pfSense firewall.
 #[derive(Debug, Parser)]
@@ -14,7 +14,8 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// List the current DHCP leases, ordered by IP address.
+    /// List the current DHCP leases, ordered by IP address unless --sort
+    /// says otherwise.
     ///
     /// Filters combine with AND; repeating a filter accepts any of its
     /// values.
@@ -24,6 +25,8 @@ pub enum Command {
         utc: bool,
         #[command(flatten)]
         filter: FilterArgs,
+        #[command(flatten)]
+        sort: SortArgs,
     },
 }
 
@@ -53,6 +56,39 @@ pub struct FilterArgs {
     /// Served on interface NAME, matched whole, ignoring case.
     #[arg(long = "interface", value_name = "NAME")]
     pub interfaces: Vec<String>,
+}
+
+/// The `list` flags that order leases.
+#[derive(Debug, Default, Args)]
+pub struct SortArgs {
+    /// Sort by column KEY: IPs numerically, hostnames, states and interfaces
+    /// ignoring case. Leases missing the value sort last, also with
+    /// --reverse; equal values follow in ascending IP order.
+    #[arg(
+        long = "sort",
+        value_name = "KEY",
+        default_value = SortKey::Ip.as_str(),
+        ignore_case = true,
+        value_parser = sort_key_parser(),
+    )]
+    pub key: SortKey,
+    /// Reverse the sort order (missing values still sort last).
+    #[arg(long)]
+    pub reverse: bool,
+}
+
+impl From<&SortArgs> for Sort {
+    fn from(args: &SortArgs) -> Self {
+        Self {
+            key: args.key,
+            reverse: args.reverse,
+        }
+    }
+}
+
+/// Accepts only the sort key names, so clap lists them in `--help`.
+fn sort_key_parser() -> impl TypedValueParser<Value = SortKey> {
+    PossibleValuesParser::new(SortKey::names()).try_map(|name| name.parse::<SortKey>())
 }
 
 /// Accepts only the known state names, so clap lists them in `--help` and

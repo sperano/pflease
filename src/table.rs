@@ -12,7 +12,7 @@ use jiff::tz::TimeZone;
 
 use unicode_width::UnicodeWidthStr;
 
-use crate::{Filter, Lease, LeaseSource, SourceError};
+use crate::{Filter, Lease, LeaseSource, Sort, SourceError};
 
 /// Column headings, in display order.
 const HEADERS: [&str; COLUMNS] = [
@@ -59,7 +59,8 @@ const FORMAT_CHARS: [RangeInclusive<char>; 21] = [
 ];
 
 /// Fetches every lease from `source`, keeps those `filter` accepts and
-/// renders them as a table, ordered by IP address, with times shown in `tz`.
+/// renders them as a table in the order `sort` gives, with times shown in
+/// `tz`.
 ///
 /// # Errors
 ///
@@ -67,11 +68,12 @@ const FORMAT_CHARS: [RangeInclusive<char>; 21] = [
 pub fn list(
     source: &dyn LeaseSource,
     filter: &Filter,
+    sort: Sort,
     tz: &TimeZone,
 ) -> Result<String, SourceError> {
     let mut leases = source.leases()?;
     leases.retain(|lease| filter.matches(lease));
-    leases.sort_by_key(|lease| lease.ip);
+    sort.apply(&mut leases);
     Ok(render(&leases, tz))
 }
 

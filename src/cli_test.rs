@@ -2,9 +2,9 @@ use std::net::Ipv4Addr;
 
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser};
-use pflease::{Filter, Lease, LeaseState, MacAddr};
+use pflease::{Filter, Lease, LeaseState, MacAddr, Sort, SortKey};
 
-use super::{Cli, Command, FilterArgs};
+use super::{Cli, Command, FilterArgs, SortArgs};
 
 fn parse(args: &[&str]) -> Cli {
     Cli::try_parse_from(args).expect("arguments parse")
@@ -14,6 +14,13 @@ fn list_args(extra: &[&str]) -> FilterArgs {
     let args: Vec<&str> = ["pflease", "list"].iter().chain(extra).copied().collect();
     match parse(&args).command {
         Command::List { filter, .. } => filter,
+    }
+}
+
+fn sort_args(extra: &[&str]) -> SortArgs {
+    let args: Vec<&str> = ["pflease", "list"].iter().chain(extra).copied().collect();
+    match parse(&args).command {
+        Command::List { sort, .. } => sort,
     }
 }
 
@@ -180,4 +187,65 @@ fn filter_from_args_carries_every_flag() {
         ..lease("nas", LeaseState::Active, "opt1")
     };
     assert!(!filter.matches(&other_ip));
+}
+
+#[test]
+fn list_sorts_by_ascending_ip_by_default() {
+    assert_eq!(Sort::from(&sort_args(&[])), Sort::default());
+}
+
+#[test]
+fn parses_sort_key_ignoring_case_and_reverse() {
+    let sort = Sort::from(&sort_args(&["--sort", "Hostname", "--reverse"]));
+    assert_eq!(
+        sort,
+        Sort {
+            key: SortKey::Hostname,
+            reverse: true,
+        }
+    );
+}
+
+#[test]
+fn parses_every_sort_key() {
+    let keys: Vec<SortKey> = [
+        "ip",
+        "mac",
+        "hostname",
+        "start",
+        "end",
+        "state",
+        "interface",
+    ]
+    .iter()
+    .map(|name| sort_args(&["--sort", name]).key)
+    .collect();
+    assert_eq!(
+        keys,
+        [
+            SortKey::Ip,
+            SortKey::Mac,
+            SortKey::Hostname,
+            SortKey::Start,
+            SortKey::End,
+            SortKey::State,
+            SortKey::Interface,
+        ]
+    );
+}
+
+#[test]
+fn rejects_unknown_sort_key() {
+    assert_eq!(error_kind(&["--sort", "size"]), ErrorKind::InvalidValue);
+}
+
+#[test]
+fn help_says_missing_values_sort_last() {
+    let help = Cli::command()
+        .find_subcommand_mut("list")
+        .expect("list subcommand")
+        .render_long_help()
+        .to_string();
+    assert!(help.contains("Leases missing the value sort last, also with --reverse"));
+    assert!(help.contains("[default: ip]"));
 }

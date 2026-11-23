@@ -9,10 +9,14 @@ UTC times), but no lease source is implemented yet, so it exits with
 `list` filters with `--hostname` (substring), `--mac` (address or prefix),
 `--ip` (CIDR, `a-b` range or address), `--state` and `--interface`.
 Different flags must all match; repeating a flag matches any of its values.
+`--sort ip|mac|hostname|start|end|state|interface` (default `ip`) orders the
+table, `--reverse` flips it; missing values always sort last and ties
+follow ascending IP.
 
 ```bash
 cargo run -- list
 cargo run -- list --ip 10.0.0.0/24 --state active --state free
+cargo run -- list --sort hostname --reverse
 ```
 
 ## License
