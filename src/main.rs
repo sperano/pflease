@@ -9,6 +9,7 @@ use clap::Parser;
 use jiff::tz::TimeZone;
 use pflease::LeaseSource;
 use pflease::config::{self, ConfigError};
+use pflease::source::IscSshSource;
 
 /// Why a command could not run.
 #[derive(Debug, thiserror::Error)]
@@ -16,9 +17,6 @@ enum RunError {
     /// The settings could not be loaded.
     #[error(transparent)]
     Config(#[from] ConfigError),
-    /// No lease source is wired into `list` yet, so `main` cannot build one.
-    #[error("no lease source configured")]
-    NoSource,
     /// The source failed to produce its leases.
     #[error(transparent)]
     Source(#[from] pflease::SourceError),
@@ -38,28 +36,22 @@ fn main() -> ExitCode {
     }
 }
 
-/// Loads the settings (environment read with `env`), then runs `cli`.
+/// Loads the settings (environment read with `env`), then runs `cli`
+/// against the firewall's lease database, read over SSH.
 fn execute(
     cli: &cli::Cli,
     env: &dyn Fn(&str) -> Option<OsString>,
     local: &TimeZone,
 ) -> Result<String, RunError> {
-    // Checked now so a bad config fails early; the SSH source that consumes
-    // the settings is built from them in a later change.
-    let _settings = config::load(&cli.config.options(), env)?;
-    run(cli, None, local)
+    let settings = config::load(&cli.config.options(), env)?;
+    run(cli, &IscSshSource::new(&settings), local)
 }
 
 /// Runs `cli` against `source` and returns what to print; times are shown
 /// in `local` unless `--utc` is given.
-fn run(
-    cli: &cli::Cli,
-    source: Option<&dyn LeaseSource>,
-    local: &TimeZone,
-) -> Result<String, RunError> {
+fn run(cli: &cli::Cli, source: &dyn LeaseSource, local: &TimeZone) -> Result<String, RunError> {
     match &cli.command {
         cli::Command::List { utc, filter, sort } => {
-            let source = source.ok_or(RunError::NoSource)?;
             let tz = if *utc { TimeZone::UTC } else { local.clone() };
             Ok(pflease::table::list(
                 source,
