@@ -5,7 +5,7 @@ use jiff::tz::{Offset, TimeZone};
 
 use super::{list, render};
 use crate::source::FakeSource;
-use crate::{Filter, Lease, LeaseState, MacAddr, SourceError};
+use crate::{Filter, Lease, LeaseState, MacAddr, Sort, SortKey, SourceError};
 
 /// 2023-11-14 22:13:20 UTC.
 const START_SECONDS: i64 = 1_700_000_000;
@@ -78,7 +78,8 @@ fn shows_times_in_the_given_zone() {
 #[test]
 fn list_orders_by_ip_numerically() {
     let source = FakeSource::Leases(sample_leases());
-    let table = list(&source, &Filter::default(), &TimeZone::UTC).expect("fake succeeds");
+    let table =
+        list(&source, &Filter::default(), Sort::default(), &TimeZone::UTC).expect("fake succeeds");
     let ips: Vec<&str> = table
         .lines()
         .skip(1)
@@ -96,7 +97,7 @@ IP        MAC                HOSTNAME  START                END                 
 10.0.0.2  02:00:00:00:00:02  b         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
 ";
     assert_eq!(
-        list(&source, &Filter::default(), &TimeZone::UTC).expect("fake succeeds"),
+        list(&source, &Filter::default(), Sort::default(), &TimeZone::UTC).expect("fake succeeds"),
         expected
     );
 }
@@ -111,15 +112,32 @@ IP        MAC                HOSTNAME  START                END                 
 10.0.0.3  02:00:00:00:00:03  c         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
 ";
     assert_eq!(
-        list(&source, &filter, &TimeZone::UTC).expect("fake succeeds"),
+        list(&source, &filter, Sort::default(), &TimeZone::UTC).expect("fake succeeds"),
         expected
     );
 }
 
 #[test]
+fn list_orders_leases_by_the_given_sort() {
+    let source = FakeSource::Leases(sample_leases());
+    let sort = Sort {
+        key: SortKey::Hostname,
+        reverse: true,
+    };
+    let table = list(&source, &Filter::default(), sort, &TimeZone::UTC).expect("fake succeeds");
+    let ips: Vec<&str> = table
+        .lines()
+        .skip(1)
+        .map(|line| line.split_whitespace().next().expect("IP column"))
+        .collect();
+    assert_eq!(ips, ["10.0.0.10", "10.0.0.100", "10.0.0.9"]);
+}
+
+#[test]
 fn list_passes_source_errors_through() {
     let source = FakeSource::Failing("connection refused".into());
-    let err = list(&source, &Filter::default(), &TimeZone::UTC).expect_err("failing source fails");
+    let err = list(&source, &Filter::default(), Sort::default(), &TimeZone::UTC)
+        .expect_err("failing source fails");
     assert!(matches!(&err, SourceError::Unavailable(m) if m == "connection refused"));
 }
 

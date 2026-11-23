@@ -167,6 +167,26 @@ impl LeaseSource for Two {
     }
 }
 
+/// The hostname column of every lease row of `output`.
+fn hostnames(output: &str) -> Vec<&str> {
+    output
+        .lines()
+        .skip(1)
+        .map(|line| line.split_whitespace().nth(2).expect("hostname column"))
+        .collect()
+}
+
+#[test]
+fn list_applies_the_sort_flags() {
+    let output = run(
+        &parse(&["pflease", "list", "--sort", "hostname", "--reverse"]),
+        Some(&Two),
+        &local(),
+    )
+    .expect("leases");
+    assert_eq!(hostnames(&output), ["beta", "alpha"]);
+}
+
 #[test]
 fn list_applies_the_filter_flags() {
     let output = run(
@@ -175,10 +195,5 @@ fn list_applies_the_filter_flags() {
         &local(),
     )
     .expect("leases");
-    let hostnames: Vec<&str> = output
-        .lines()
-        .skip(1)
-        .map(|line| line.split_whitespace().nth(2).expect("hostname column"))
-        .collect();
-    assert_eq!(hostnames, ["beta"]);
+    assert_eq!(hostnames(&output), ["beta"]);
 }

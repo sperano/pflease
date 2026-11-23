@@ -58,10 +58,15 @@ fn run(
     local: &TimeZone,
 ) -> Result<String, RunError> {
     match &cli.command {
-        cli::Command::List { utc, filter } => {
+        cli::Command::List { utc, filter, sort } => {
             let source = source.ok_or(RunError::NoSource)?;
             let tz = if *utc { TimeZone::UTC } else { local.clone() };
-            Ok(pflease::table::list(source, &filter.into(), &tz)?)
+            Ok(pflease::table::list(
+                source,
+                &filter.into(),
+                sort.into(),
+                &tz,
+            )?)
         }
     }
 }
