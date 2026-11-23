@@ -1,7 +1,9 @@
 use std::net::Ipv4Addr;
+use std::num::NonZeroU16;
 
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser};
+use pflease::config::{Layer, Options};
 use pflease::{Filter, Lease, LeaseState, MacAddr};
 
 use super::{Cli, Command, FilterArgs};
@@ -30,6 +32,9 @@ fn error_text(extra: &[&str]) -> String {
         .expect_err("arguments rejected")
         .to_string()
 }
+
+/// Port passed with `--port` in the mapping test.
+const TEST_PORT: u16 = 2222;
 
 #[test]
 fn cli_definition_is_valid() {
@@ -180,4 +185,60 @@ fn filter_from_args_carries_every_flag() {
         ..lease("nas", LeaseState::Active, "opt1")
     };
     assert!(!filter.matches(&other_ip));
+}
+
+#[test]
+fn config_flags_default_to_unset() {
+    let cli = Cli::try_parse_from(["pflease", "list"]).expect("list parses");
+    assert_eq!(cli.config.options(), Options::default());
+}
+
+#[test]
+fn config_flags_map_to_options_after_the_subcommand() {
+    let cli = Cli::try_parse_from([
+        "pflease",
+        "list",
+        "--config",
+        "/etc/pflease.toml",
+        "--firewall",
+        "lab",
+        "--host",
+        "fw.example",
+        "--user",
+        "admin",
+        "--port",
+        "2222",
+        "--identity-file",
+        "/keys/fw",
+        "--lease-file",
+        "/tmp/dhcpd.leases",
+    ])
+    .expect("flags parse");
+    assert_eq!(
+        cli.config.options(),
+        Options {
+            config: Some("/etc/pflease.toml".into()),
+            firewall: Some("lab".into()),
+            flags: Layer {
+                host: Some("fw.example".into()),
+                user: Some("admin".into()),
+                port: NonZeroU16::new(TEST_PORT),
+                identity_file: Some("/keys/fw".into()),
+                lease_file: Some("/tmp/dhcpd.leases".into()),
+            },
+        }
+    );
+}
+
+#[test]
+fn config_flags_parse_before_the_subcommand() {
+    let cli = Cli::try_parse_from(["pflease", "--host", "fw.example", "list"])
+        .expect("global flag parses");
+    assert_eq!(cli.config.host.as_deref(), Some("fw.example"));
+}
+
+#[test]
+fn zero_port_flag_is_rejected() {
+    let err = Cli::try_parse_from(["pflease", "list", "--port", "0"]).expect_err("port 0");
+    assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
 }
