@@ -5,6 +5,7 @@
 //! comes through [`LeaseSource`], so display and filter code never depends on
 //! how the leases were fetched.
 
+pub mod config;
 pub mod filter;
 pub mod ip_range;
 pub mod lease;

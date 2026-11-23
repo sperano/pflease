@@ -14,11 +14,17 @@ Goals, in order:
 2. Filter and sort them (by hostname, MAC, IP range, state, interface).
 3. Promote a lease to a static mapping on the firewall.
 
-How leases are fetched is not decided yet. Candidates: the pfSense REST API
-package, or SSH reading the lease database (ISC `dhcpd.leases`, or Kea's on
-newer pfSense releases). Settle it in a PR before building on it, and keep
-the source behind a trait so the display and filter code does not depend on
-it.
+Leases are read over SSH from pfSense's ISC lease database
+(`/var/dhcpd/var/db/dhcpd.leases`), by shelling out to `ssh` so the user's
+`~/.ssh/config`, agent and `known_hosts` apply and no crypto crate is
+needed. The REST API package is not installed on the target firewall and is
+in maintenance mode, and the firewall still runs ISC `dhcpd`; keep the
+source behind the `LeaseSource` trait so a Kea reader can replace it. The
+write path for static mappings is decided separately, before `promote`.
+
+Settings come from `~/.config/pflease/config.toml` (or `--config`), then
+`PFLEASE_*` environment variables, then flags; see `src/config.rs`. No
+setting holds a secret: SSH keys stay with `ssh`.
 
 ## Commands
 
