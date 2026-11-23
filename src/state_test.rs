@@ -81,3 +81,24 @@ fn rejects_empty() {
         "lease state must not be empty"
     );
 }
+
+#[test]
+fn known_names_lists_every_canonical_name_in_order() {
+    let names: Vec<&str> = LeaseState::known_names().collect();
+    assert_eq!(
+        names,
+        [
+            "active",
+            "free",
+            "expired",
+            "released",
+            "abandoned",
+            "reset",
+            "backup",
+            "bootp",
+            "reserved",
+            "declined",
+            "expired-reclaimed",
+        ]
+    );
+}

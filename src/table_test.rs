@@ -5,7 +5,7 @@ use jiff::tz::{Offset, TimeZone};
 
 use super::{list, render};
 use crate::source::FakeSource;
-use crate::{Lease, LeaseState, MacAddr, SourceError};
+use crate::{Filter, Lease, LeaseState, MacAddr, SourceError};
 
 /// 2023-11-14 22:13:20 UTC.
 const START_SECONDS: i64 = 1_700_000_000;
@@ -78,7 +78,7 @@ fn shows_times_in_the_given_zone() {
 #[test]
 fn list_orders_by_ip_numerically() {
     let source = FakeSource::Leases(sample_leases());
-    let table = list(&source, &TimeZone::UTC).expect("fake succeeds");
+    let table = list(&source, &Filter::default(), &TimeZone::UTC).expect("fake succeeds");
     let ips: Vec<&str> = table
         .lines()
         .skip(1)
@@ -96,7 +96,22 @@ IP        MAC                HOSTNAME  START                END                 
 10.0.0.2  02:00:00:00:00:02  b         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
 ";
     assert_eq!(
-        list(&source, &TimeZone::UTC).expect("fake succeeds"),
+        list(&source, &Filter::default(), &TimeZone::UTC).expect("fake succeeds"),
+        expected
+    );
+}
+
+#[test]
+fn list_shows_only_leases_the_filter_accepts() {
+    let source = FakeSource::Leases(vec![complete(3, "c"), complete(1, "a"), complete(2, "b")]);
+    let filter = Filter::default().hostname("A").hostname("c");
+    let expected = "\
+IP        MAC                HOSTNAME  START                END                  STATE   INTERFACE
+10.0.0.1  02:00:00:00:00:01  a         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+10.0.0.3  02:00:00:00:00:03  c         2023-11-14 22:13:20  2023-11-14 23:13:20  active  lan
+";
+    assert_eq!(
+        list(&source, &filter, &TimeZone::UTC).expect("fake succeeds"),
         expected
     );
 }
@@ -104,7 +119,7 @@ IP        MAC                HOSTNAME  START                END                 
 #[test]
 fn list_passes_source_errors_through() {
     let source = FakeSource::Failing("connection refused".into());
-    let err = list(&source, &TimeZone::UTC).expect_err("failing source fails");
+    let err = list(&source, &Filter::default(), &TimeZone::UTC).expect_err("failing source fails");
     assert!(matches!(&err, SourceError::Unavailable(m) if m == "connection refused"));
 }
 

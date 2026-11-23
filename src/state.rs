@@ -110,6 +110,21 @@ impl LeaseState {
     #[must_use]
     pub fn as_str(&self) -> &str {
         match self {
+            Self::Other(unknown) => unknown.as_str(),
+            known => known.canonical_name().unwrap_or_default(),
+        }
+    }
+
+    /// The canonical names of the known states, in declaration order: every
+    /// name [`LeaseState::from_str`] maps to a variant other than
+    /// [`LeaseState::Other`], except Kea's `default` alias of `active`.
+    pub fn known_names() -> impl Iterator<Item = &'static str> {
+        KNOWN.into_iter().filter_map(|state| state.canonical_name())
+    }
+
+    /// The canonical name of a known state; `None` for [`LeaseState::Other`].
+    const fn canonical_name(&self) -> Option<&'static str> {
+        Some(match self {
             Self::Active => "active",
             Self::Free => "free",
             Self::Expired => "expired",
@@ -121,8 +136,8 @@ impl LeaseState {
             Self::Reserved => "reserved",
             Self::Declined => "declined",
             Self::ExpiredReclaimed => "expired-reclaimed",
-            Self::Other(unknown) => unknown.as_str(),
-        }
+            Self::Other(_) => return None,
+        })
     }
 }
 
