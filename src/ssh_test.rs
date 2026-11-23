@@ -192,14 +192,23 @@ fn silent_failure_says_there_was_no_message() {
     );
 }
 
-/// Kills the process `pid`, which the test started in the background.
-fn kill(pid: &str) {
-    let _guard = spawn_lock();
-    let status = std::process::Command::new("kill")
-        .arg(pid)
-        .status()
-        .expect("run kill");
-    assert!(status.success(), "kill {pid} failed");
+/// Kills, when dropped, the process whose pid a fake program wrote to the
+/// file it holds, so a test that panics first does not leave it running.
+struct KillOnDrop(std::path::PathBuf);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        // No pid written: the fake never started its child.
+        let Ok(pid) = std::fs::read_to_string(&self.0) else {
+            return;
+        };
+        let _guard = spawn_lock();
+        let status = std::process::Command::new("kill").arg(pid.trim()).status();
+        // A second panic while unwinding would abort the test binary.
+        if !std::thread::panicking() {
+            assert!(status.is_ok_and(|s| s.success()), "kill {pid} failed");
+        }
+    }
 }
 
 #[test]
@@ -226,17 +235,18 @@ fn hung_ssh_is_killed_after_the_timeout() {
 #[test]
 fn pipe_held_open_after_exit_times_out() {
     // A background child keeps stdout open after the script exits 0, like
-    // a `ProxyCommand` outliving `ssh`. It writes its pid so the test can
-    // end it instead of leaving it, and the drain threads, running.
+    // a `ProxyCommand` outliving `ssh`. It writes its pid so the test ends
+    // it, even on a panic, instead of leaving it, and the drain threads,
+    // running.
     let pid_dir = tempfile::tempdir().expect("temp dir");
     let pid_file = pid_dir.path().join("pid");
     let body = format!(
         "sleep {HUNG_SECONDS} & echo $! > '{}'; echo partial",
         pid_file.display()
     );
+    let child = KillOnDrop(pid_file);
     let err = read_with(&body, SHORT).expect_err("times out");
-    let pid = std::fs::read_to_string(&pid_file).expect("fake wrote its pid");
-    kill(pid.trim());
+    assert!(child.0.exists(), "fake wrote no pid");
     assert_timed_out(&err);
 }
 
